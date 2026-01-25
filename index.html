@@ -1,0 +1,1579 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>⚡️ 𝒞𝑜𝓃𝓉𝓇𝑜𝓁𝑒𝓍 ⚙️ – 𝐿𝒪𝒢𝐼𝒩 🔐</title>
+
+    <link rel="icon" href="/favicon.png" type="image/png">
+
+    <!-- الخطوط والأيقونات -->
+    <link href="https://fonts.googleapis.com/css2?family=Tajawal:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/css/all.min.css" rel="stylesheet">
+    
+    <!-- الأنماط -->
+    <link rel="stylesheet" href="/css/style.css">
+    
+    <style>
+        /* تحسينات خاصة بصفحة تسجيل الدخول */
+        :root {
+            --primary-violet: #8A2BE2;
+            --primary-cyan: #00e5ff;
+            --bg-primary: #0d0c1d;
+            --bg-glass: rgba(21, 19, 44, 0.85);
+            --text-primary: #f0f8ff;
+            --text-secondary: #a9a2c8;
+            --glass-border: rgba(138, 43, 226, 0.3);
+            --radius-md: 12px;
+            --radius-lg: 18px;
+            --transition-normal: all 0.3s cubic-bezier(0.4, 0.0, 0.2, 1);
+        }
+
+        body {
+            font-family: 'Tajawal', sans-serif;
+            background: var(--bg-primary);
+            background-image: 
+                radial-gradient(ellipse at top, rgba(138, 43, 226, 0.1) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(0, 229, 255, 0.1) 0%, transparent 50%);
+            background-attachment: fixed;
+            color: var(--text-primary);
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            margin: 0;
+        }
+
+        .auth-container {
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+        }
+
+        .auth-card {
+            background: var(--bg-glass);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 40px;
+            box-shadow: 
+                0 20px 60px rgba(138, 43, 226, 0.3),
+                inset 0 1px 0 rgba(255, 255, 255, 0.1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .auth-card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+            transition: left 0.8s;
+        }
+
+        .auth-card:hover::before {
+            left: 100%;
+        }
+
+        .auth-title {
+            text-align: center;
+            font-size: 2.2rem;
+            font-weight: 700;
+            margin-bottom: 30px;
+            background: linear-gradient(135deg, var(--primary-violet), var(--primary-cyan));
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        .form-group {
+            margin-bottom: 25px;
+            position: relative;
+        }
+
+        .form-label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 600;
+            color: var(--text-primary);
+            font-size: 1rem;
+        }
+
+        .form-input {
+            width: 100%;
+            padding: 15px 20px;
+            border: 2px solid var(--glass-border);
+            border-radius: var(--radius-md);
+            background: rgba(255, 255, 255, 0.1);
+            color: var(--text-primary);
+            font-size: 1rem;
+            font-family: 'Tajawal', sans-serif;
+            transition: var(--transition-normal);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-sizing: border-box;
+        }
+
+        .form-input:focus {
+            outline: none;
+            border-color: var(--primary-violet);
+            box-shadow: 0 0 0 3px rgba(138, 43, 226, 0.1);
+            background: rgba(255, 255, 255, 0.15);
+        }
+
+        .form-input::placeholder {
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .password-input-group {
+            position: relative;
+            display: flex;
+            align-items: center;
+        }
+
+        .password-toggle {
+            position: absolute;
+            left: 15px;
+            background: none;
+            border: none;
+            color: rgba(255, 255, 255, 0.7);
+            cursor: pointer;
+            font-size: 1.1rem;
+            transition: color 0.3s ease;
+            z-index: 10;
+        }
+
+        .password-toggle:hover {
+            color: var(--primary-cyan);
+        }
+
+        .btn {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            padding: 15px 30px;
+            border: none;
+            border-radius: var(--radius-md);
+            font-size: 1rem;
+            font-weight: 600;
+            font-family: 'Tajawal', sans-serif;
+            text-decoration: none;
+            cursor: pointer;
+            transition: var(--transition-normal);
+            position: relative;
+            overflow: hidden;
+            min-height: 50px;
+            width: 100%;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.3);
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 8px 25px rgba(0, 0, 0, 0.4);
+        }
+
+        .btn-primary {
+            background: linear-gradient(135deg, var(--primary-violet), var(--primary-cyan));
+            color: white;
+        }
+
+        .btn-primary:hover {
+            background: linear-gradient(135deg, var(--primary-cyan), var(--primary-violet));
+            box-shadow: 0 8px 25px rgba(138, 43, 226, 0.5);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            color: white;
+            border: 2px solid rgba(255, 255, 255, 0.2);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+            border-color: var(--primary-violet);
+        }
+
+        .form-message {
+            padding: 15px 20px;
+            border-radius: var(--radius-md);
+            margin: 15px 0;
+            font-weight: 500;
+            display: none;
+            align-items: center;
+            gap: 10px;
+            border-left: 4px solid;
+            backdrop-filter: blur(20px);
+        }
+
+        .form-message.show {
+            display: flex;
+        }
+
+        .form-message::before {
+            font-family: 'Font Awesome 6 Free';
+            font-weight: 900;
+            font-size: 1.2rem;
+        }
+
+        .form-message.success {
+            background: rgba(46, 213, 115, 0.1);
+            color: #2ed573;
+            border-color: #2ed573;
+        }
+
+        .form-message.success::before {
+            content: '✓';
+        }
+
+        .form-message.error {
+            background: rgba(255, 71, 87, 0.1);
+            color: #ff4757;
+            border-color: #ff4757;
+        }
+
+        .form-message.error::before {
+            content: '✗';
+        }
+
+        .form-message.warning {
+            background: rgba(255, 165, 2, 0.1);
+            color: #ffa502;
+            border-color: #ffa502;
+        }
+
+        .form-message.warning::before {
+            content: '⚠';
+        }
+
+        .form-message.info {
+            background: rgba(59, 130, 246, 0.1);
+            color: #3b82f6;
+            border-color: #3b82f6;
+        }
+
+        .form-message.info::before {
+            content: 'ℹ';
+        }
+
+        .auth-links {
+            text-align: center;
+            margin-top: 25px;
+        }
+
+        .auth-link {
+            color: var(--primary-cyan);
+            text-decoration: none;
+            font-weight: 500;
+            transition: var(--transition-normal);
+            cursor: pointer;
+        }
+
+        .auth-link:hover {
+            color: var(--primary-violet);
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .divider {
+            text-align: center;
+            margin: 20px 0;
+            position: relative;
+            color: rgba(255, 255, 255, 0.6);
+        }
+
+        .divider::before {
+            content: '';
+            position: absolute;
+            top: 50%;
+            left: 0;
+            right: 0;
+            height: 1px;
+            background: rgba(255, 255, 255, 0.2);
+            z-index: 1;
+        }
+
+        .divider span {
+            background: var(--bg-glass);
+            padding: 0 15px;
+            position: relative;
+            z-index: 2;
+        }
+
+        /* النوافذ المنبثقة */
+        .modal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.8);
+            backdrop-filter: blur(20px);
+            z-index: 9999;
+            display: none;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            opacity: 0;
+            transition: opacity 0.3s ease;
+        }
+
+        .modal.show {
+            display: flex;
+            opacity: 1;
+        }
+
+        .modal-content {
+            background: var(--bg-glass);
+            border: 1px solid var(--glass-border);
+            border-radius: var(--radius-lg);
+            padding: 30px;
+            width: 100%;
+            max-width: 500px;
+            position: relative;
+            backdrop-filter: blur(30px);
+            transform: scale(0.9) translateY(20px);
+            transition: transform 0.3s ease;
+        }
+
+        .modal.show .modal-content {
+            transform: scale(1) translateY(0);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+        }
+
+        .modal-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: var(--text-primary);
+            margin: 0;
+        }
+
+        .close-button {
+            background: rgba(255, 71, 87, 0.2);
+            border: 2px solid #ff4757;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: #ff4757;
+            cursor: pointer;
+            font-size: 18px;
+            transition: var(--transition-normal);
+        }
+
+        .close-button:hover {
+            background: #ff4757;
+            color: white;
+            transform: scale(1.1) rotate(90deg);
+        }
+
+        /* زر تغيير الوضع */
+        .theme-toggle {
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            width: 50px;
+            height: 50px;
+            border-radius: 50%;
+            background: linear-gradient(135deg, var(--primary-violet), var(--primary-cyan));
+            border: none;
+            color: white;
+            font-size: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            box-shadow: 0 4px 15px rgba(138, 43, 226, 0.4);
+            transition: var(--transition-normal);
+            z-index: 1000;
+        }
+
+        .theme-toggle:hover {
+            transform: scale(1.1);
+            box-shadow: 0 8px 25px rgba(138, 43, 226, 0.6);
+        }
+
+        /* ============================================= */
+        /* ====== تصميم زر جوجل النهائي V3.0 (Galactic Glass) ====== */
+        /* ============================================= */
+
+        a.btn.btn-google {
+            background: rgba(26, 28, 62, 0.5); /* خلفية زجاجية داكنة */
+            border: 1px solid var(--glass-border);
+            justify-content: flex-start; /* محاذاة المحتوى لليمين */
+            padding: 10px 15px;
+            gap: 20px;
+            margin-top: 15px;
+            width: 100%;
+            text-decoration: none;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+        }
+
+        a.btn.btn-google:hover {
+            background: rgba(26, 28, 62, 0.8);
+            border-color: var(--primary-cyan);
+            box-shadow: 0 8px 25px rgba(0, 229, 255, 0.2);
+            transform: translateY(-3px);
+        }
+
+        /* تصميم أيقونة جوجل الجديدة */
+        a.btn.btn-google .fab.fa-google {
+            background: #ffffff;
+            color: #4285F4; /* لون جوجل الأزرق */
+            font-size: 20px;
+            width: 40px;
+            height: 40px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0; /* منع الأيقونة من التقلص */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            transition: all 0.3s ease;
+        }
+
+        a.btn.btn-google:hover .fab.fa-google {
+            transform: rotate(360deg);
+            box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+        }
+
+        /* تصميم النص داخل الزر */
+        a.btn.btn-google span {
+            font-weight: 600;
+            font-size: 1rem;
+            color: #E0E6F1;
+        }
+
+        /* الوضع المضيء */
+        [data-theme="light"] {
+            --bg-primary: #f8fafc;
+            --bg-glass: rgba(255, 255, 255, 0.85);
+            --text-primary: #1a202c;
+            --text-secondary: #4a5568;
+            --glass-border: rgba(0, 0, 0, 0.1);
+        }
+
+        [data-theme="light"] body {
+            background-image: 
+                radial-gradient(ellipse at top, rgba(138, 43, 226, 0.05) 0%, transparent 50%),
+                radial-gradient(ellipse at bottom right, rgba(0, 229, 255, 0.05) 0%, transparent 50%);
+        }
+
+        /* استجابة للأجهزة المحمولة */
+        @media (max-width: 768px) {
+            .auth-container {
+                padding: 15px;
+            }
+
+            .auth-card {
+                padding: 30px 20px;
+            }
+
+            .auth-title {
+                font-size: 1.8rem;
+            }
+
+            .modal-content {
+                margin: 20px;
+                padding: 25px 20px;
+            }
+
+            .theme-toggle {
+                width: 45px;
+                height: 45px;
+                font-size: 18px;
+                top: 15px;
+                right: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <!-- زر تغيير الوضع
+    <button class="theme-toggle" id="theme-toggle">
+        <i class="fas fa-sun"></i>
+    </button> -->
+
+    <div class="auth-container">
+        <!-- بطاقة تسجيل الدخول -->
+        <div class="auth-card" id="login-card">
+            <h1 class="auth-title">
+                <i class="fas fa-home"></i>
+                تسجيل الدخول
+            </h1>
+
+            <form id="login-form">
+                <div class="form-message" id="login-message"></div>
+
+                <div class="form-group">
+                    <label class="form-label" for="login-email">البريد الإلكتروني</label>
+                    <input type="email" id="login-email" class="form-input" placeholder="أدخل بريدك الإلكتروني" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="login-password">كلمة المرور</label>
+                    <div class="password-input-group">
+                        <input type="password" id="login-password" class="form-input" placeholder="أدخل كلمة المرور" required>
+                        <button type="button" class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-sign-in-alt"></i>
+                    تسجيل الدخول
+                </button>
+            </form>
+
+            <div class="auth-links">
+                <a href="#" class="auth-link" id="forgot-password-link">نسيت كلمة المرور؟</a>
+                <div class="divider"><span>أو</span></div>
+                <a href="#" class="auth-link" id="show-register">ليس لديك حساب؟ إنشاء حساب جديد</a>
+                <div class="divider"><span>أو سجل الدخول عبر</span></div>
+                <a href="/auth/google" class="btn btn-google">
+                    <i class="fab fa-google"></i>
+                    <span>تسجيل الدخول باستخدام جوجل</span>
+                </a>
+            </div>
+        </div>
+
+        <!-- بطاقة إنشاء حساب -->
+        <div class="auth-card" id="register-card" style="display: none;">
+            <h1 class="auth-title">
+                <i class="fas fa-user-plus"></i>
+                إنشاء حساب جديد
+            </h1>
+
+            <form id="register-form">
+                <div class="form-message" id="register-message"></div>
+
+                <div class="form-group">
+                    <label class="form-label" for="register-username">اسم المستخدم</label>
+                    <input type="text" id="register-username" class="form-input" placeholder="أدخل اسم المستخدم" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="register-email">البريد الإلكتروني</label>
+                    <input type="email" id="register-email" class="form-input" placeholder="أدخل بريدك الإلكتروني" required>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="register-password">كلمة المرور</label>
+                    <div class="password-input-group">
+                        <input type="password" id="register-password" class="form-input" placeholder="أدخل كلمة المرور (6 أحرف على الأقل)" required>
+                        <button type="button" class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="register-adafruit-username">اسم مستخدم Adafruit (اختياري)</label>
+                    <input type="text" id="register-adafruit-username" class="form-input" placeholder="اسم المستخدم في Adafruit IO">
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="register-adafruit-key">مفتاح Adafruit API (اختياري)</label>
+                    <div class="password-input-group">
+                        <input type="password" id="register-adafruit-key" class="form-input" placeholder="مفتاح Adafruit IO">
+                        <button type="button" class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-user-plus"></i>
+                    إنشاء حساب
+                </button>
+            </form>
+
+            <div class="auth-links">
+                <a href="#" class="auth-link" id="show-login">لديك حساب بالفعل؟ تسجيل الدخول</a>
+            </div>
+        </div>
+    </div>
+
+    <!-- نافذة نسيت كلمة المرور -->
+    <div class="modal" id="forgot-password-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">نسيت كلمة المرور؟</h2>
+                <button type="button" class="close-button">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="forgot-password-form">
+                <div class="form-message" id="forgot-message"></div>
+
+                <div class="form-group">
+                    <label class="form-label" for="forgot-email">البريد الإلكتروني</label>
+                    <input type="email" id="forgot-email" class="form-input" placeholder="أدخل بريدك الإلكتروني" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-paper-plane"></i>
+                    إرسال رمز إعادة التعيين
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- نافذة إدخال رمز التحقق -->
+    <div class="modal" id="verification-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">إدخال رمز التحقق</h2>
+                <button type="button" class="close-button">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="verification-form">
+                <div class="form-message" id="verification-message"></div>
+
+                <div class="form-group">
+                    <label class="form-label" for="verification-code">رمز التحقق</label>
+                    <input type="text" id="verification-code" class="form-input" placeholder="أدخل الرمز المُرسل إليك" maxlength="32" required>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-check"></i>
+                    تحقق من الرمز
+                </button>
+
+                <button type="button" class="btn btn-secondary" onclick="resendCode()">
+                    <i class="fas fa-redo"></i>
+                    إعادة إرسال الرمز
+                </button>
+            </form>
+        </div>
+    </div>
+
+    <!-- نافذة إعادة تعيين كلمة المرور -->
+    <div class="modal" id="reset-password-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">إعادة تعيين كلمة المرور</h2>
+                <button type="button" class="close-button">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+
+            <form id="reset-password-form">
+                <div class="form-message" id="reset-message"></div>
+
+                <div class="form-group">
+                    <label class="form-label" for="new-password">كلمة المرور الجديدة</label>
+                    <div class="password-input-group">
+                        <input type="password" id="new-password" class="form-input" placeholder="أدخل كلمة المرور الجديدة" required>
+                        <button type="button" class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <div class="form-group">
+                    <label class="form-label" for="confirm-password">تأكيد كلمة المرور</label>
+                    <div class="password-input-group">
+                        <input type="password" id="confirm-password" class="form-input" placeholder="أعد إدخال كلمة المرور" required>
+                        <button type="button" class="password-toggle">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                </div>
+
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-save"></i>
+                    تحديث كلمة المرور
+                </button>
+            </form>
+        </div>
+    </div>
+
+
+    <!-- نافذة إدخال رمز المصادقة الثنائية -->
+    <div class="modal" id="2fa-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">التحقق بخطوتين</h2>
+                <button type="button" class="close-button" aria-label="إغلاق">&times;</button>
+            </div>
+            <form id="2fa-form">
+                <p>تم إرسال رمز تحقق إلى بريدك الإلكتروني. الرجاء إدخاله أدناه.</p>
+                <div class="form-message" id="2fa-message"></div>
+                <div class="form-group">
+                    <label class="form-label" for="2fa-code">رمز التحقق</label>
+                    <input type="text" id="2fa-code" class="form-input" placeholder="أدخل الرمز المكون من 6 أرقام" required maxlength="6">
+                </div>
+                <button type="submit" class="btn btn-primary">
+    <i class="fas fa-check-circle"></i>
+    تحقق وتسجيل الدخول
+</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- نافذة إكمال التسجيل بجوجل -->
+    <div class="modal" id="complete-signup-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">إكمال إنشاء الحساب</h2>
+            </div>
+            <form id="complete-signup-form">
+                <p>مرحباً بك! يرجى إكمال بيانات حسابك.</p>
+                <div class="form-message" id="complete-signup-message"></div>
+                <div class="form-group">
+                    <label class="form-label" for="complete-password">أنشئ كلمة مرور</label>
+                    <input type="password" id="complete-password" class="form-input" required minlength="6">
+                </div>
+                <div class="form-group">
+                   <label class="form-label" for="complete-adafruit-username">اسم المستخدم Adafruit (اختياري)</label>
+                    <input type="text" id="complete-adafruit-username" class="form-input" placeholder="اختياري">
+                </div>
+                <div class="form-group">
+                    <label class="form-label" for="complete-adafruit-key">مفتاح Adafruit API (اختياري)</label>
+                    <input type="password" id="complete-adafruit-key" class="form-input">
+                </div>
+                <button type="submit" class="btn btn-primary">إكمال التسجيل</button>
+            </form>
+        </div>
+    </div>
+
+    <!-- Support Modal (unified with account page) -->
+    <div id="support-modal" class="modal support-modal" role="dialog" aria-labelledby="support-title" aria-hidden="true">
+        <div class="modal-content support-modal-content">
+            <div class="modal-header">
+                <h2 id="support-title" class="modal-title"><i class="fas fa-headset" style="margin-left:8px"></i>الدعم الفني</h2>
+                <button type="button" class="close-button" onclick="closeSupportModal()" aria-label="إغلاق نافذة الدعم">
+                    <i class="fas fa-times" aria-hidden="true"></i>
+                </button>
+            </div>
+            <div class="modal-body">
+                <p>اختر طريقة التواصل المفضلة للحصول على المساعدة:</p>
+                <div class="support-options" role="group" aria-label="خيارات الدعم">
+                    <a href="mailto:hussianabdk577@gmail.com" class="support-option email">
+                        <i class="fas fa-envelope" aria-hidden="true"></i>
+                        <span>البريد الإلكتروني</span>
+                    </a>
+                    <a href="https://wa.me/+201091601661" class="support-option whatsapp" target="_blank" rel="noopener noreferrer">
+                        <i class="fab fa-whatsapp" aria-hidden="true"></i>
+                        <span>واتساب</span>
+                    </a>
+                    <a href="tel:01091601661" class="support-option phone">
+                        <i class="fas fa-phone" aria-hidden="true"></i>
+                        <span>جوال</span>
+                    </a>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Support FAB Button -->
+    <button id="support-fab-btn" class="support-fab-btn" aria-label="الدعم الفني" title="الدعم الفني" style="position:fixed;bottom:28px;left:28px;z-index:10010;background:linear-gradient(135deg,#8A2BE2,#00e5ff);color:#fff;border:none;border-radius:50%;width:60px;height:60px;box-shadow:0 4px 18px rgba(0,0,0,0.18);display:flex;align-items:center;justify-content:center;font-size:2rem;cursor:pointer;transition:background 0.2s;">
+        <i class="fas fa-headset"></i>
+    </button>
+    <script>
+    // دعم فتح نافذة الدعم الفني كنافذة منبثقة
+    document.addEventListener('DOMContentLoaded', function() {
+        var fabBtn = document.getElementById('support-fab-btn');
+        var modal = document.getElementById('support-modal');
+        var closeBtn = modal.querySelector('.close-button');
+        if (fabBtn && modal) {
+            fabBtn.addEventListener('click', function(e) {
+                e.stopPropagation();
+                modal.style.display = 'flex';
+                setTimeout(function() { modal.classList.add('show'); }, 10);
+            });
+            closeBtn.addEventListener('click', function() {
+                modal.classList.remove('show');
+                setTimeout(function() { modal.style.display = 'none'; }, 300);
+            });
+            modal.addEventListener('click', function(e) {
+                if (e.target === modal) {
+                    modal.classList.remove('show');
+                    setTimeout(function() { modal.style.display = 'none'; }, 300);
+                }
+            });
+        }
+    });
+    </script>
+
+    <!-- الجافا سكريبت -->
+    <script>
+        // المتغيرات العامة
+        let resetEmail = '';
+        let resetCode = '';
+        let isLoading = false;
+
+        // التحقق من حالة إكمال التسجيل بجوجل
+        function checkForGoogleSignup() {
+            const urlParams = new URLSearchParams(window.location.search);
+            if (urlParams.has('complete_signup')) {
+                const token = localStorage.getItem('token');
+                if (token) {
+                    showModal('complete-signup-modal');
+                } else {
+                    console.error("Redirected to complete signup without a valid session.");
+                    window.location.href = '/dashboard';
+                }
+            }
+        }
+
+        // انتظار تحميل الصفحة
+        document.addEventListener('DOMContentLoaded', function() {
+            // فحص وجود توكن مُسبق
+            checkExistingAuth();
+            
+            // إعداد النماذج
+            setupForms();
+            
+            // إعداد النوافذ المنبثقة
+            setupModals();
+            
+            // إعداد زر تغيير الوضع
+            setupThemeToggle();
+            
+            // إعداد عرض/إخفاء كلمات المرور
+            setupPasswordToggles();
+
+            // فحص ما إذا كان المستخدم بحاجة لإكمال التسجيل بجوجل
+            checkForGoogleSignup();
+        });
+
+        // فحص المصادقة الموجودة
+        function checkExistingAuth() {
+            const token = localStorage.getItem('token');
+            const urlParams = new URLSearchParams(window.location.search);
+
+            // إذا كان المستخدم هنا خصيصًا لإكمال التسجيل، لا تفعل شيئًا.
+            // اسمح لدالة checkForGoogleSignup() بإظهار النافذة المنبثقة.
+            if (urlParams.has('complete_signup')) {
+                console.log('Final Fix: Signup completion in progress, halting redirect.');
+                return;
+            }
+
+            // إذا كان هناك توكن، تحقق من حالة الحساب قبل إعادة التوجيه
+            if (token) {
+                fetch('/api/user/me', {
+                    headers: { 'x-auth-token': token }
+                }).then(response => {
+                    if (!response.ok) {
+                        // إذا كان التوكن غير صالح، احذفه
+                        localStorage.removeItem('token');
+                        throw new Error('Invalid token');
+                    }
+                    return response.json();
+                })
+                .then(user => {
+                    // -->> هذا هو الشرط الأهم <<--
+                    // أعد التوجيه فقط إذا كان الحساب مكتملاً
+                    if (user.isComplete) {
+                        console.log('Final Fix: User is authenticated and complete. Redirecting to dashboard.');
+                        window.location.href = '/dashboard';
+                    } else {
+                        // إذا كان الحساب غير مكتمل، ابق في هذه الصفحة
+                        console.log('Final Fix: User is authenticated but not complete. Staying on login page.');
+                    }
+                }).catch(() => {
+                    // في حالة وجود أي خطأ، ابق في صفحة تسجيل الدخول
+                    localStorage.removeItem('token');
+                });
+            }
+        }
+
+        // إعداد النماذج
+        function setupForms() {
+            // نموذج تسجيل الدخول
+            const loginForm = document.getElementById('login-form');
+            if (loginForm) {
+                loginForm.addEventListener('submit', handleLogin);
+            }
+
+            // إضافة معالج نموذج التحقق بخطوتين
+            const twoFactorForm = document.getElementById('2fa-form');
+            if (twoFactorForm) {
+                twoFactorForm.addEventListener('submit', handle2FAVerification);
+            }
+
+            // نموذج إنشاء حساب
+            const registerForm = document.getElementById('register-form');
+            if (registerForm) {
+                registerForm.addEventListener('submit', handleRegister);
+            }
+
+            // نموذج نسيت كلمة المرور
+            const forgotForm = document.getElementById('forgot-password-form');
+            if (forgotForm) {
+                forgotForm.addEventListener('submit', handleForgotPassword);
+            }
+
+            // نموذج التحقق
+            const verificationForm = document.getElementById('verification-form');
+            if (verificationForm) {
+                verificationForm.addEventListener('submit', handleVerification);
+            }
+
+            // نموذج إعادة تعيين كلمة المرور
+            const resetForm = document.getElementById('reset-password-form');
+            if (resetForm) {
+                resetForm.addEventListener('submit', handleResetPassword);
+            }
+
+            // نموذج إكمال التسجيل بجوجل
+            const completeSignupForm = document.getElementById('complete-signup-form');
+            if (completeSignupForm) {
+                completeSignupForm.addEventListener('submit', handleCompleteSignup);
+            }
+
+            // روابط التبديل بين النماذج
+            const showRegisterLink = document.getElementById('show-register');
+            const showLoginLink = document.getElementById('show-login');
+            const forgotPasswordLink = document.getElementById('forgot-password-link');
+
+            if (showRegisterLink) {
+                showRegisterLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showRegisterCard();
+                });
+            }
+
+            if (showLoginLink) {
+                showLoginLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showLoginCard();
+                });
+            }
+
+            if (forgotPasswordLink) {
+                forgotPasswordLink.addEventListener('click', function(e) {
+                    e.preventDefault();
+                    showForgotPasswordModal();
+                });
+            }
+        }
+
+        // إعداد النوافذ المنبثقة
+        function setupModals() {
+            const modals = ['forgot-password-modal', 'verification-modal', 'reset-password-modal'];
+            
+            modals.forEach(modalId => {
+                const modal = document.getElementById(modalId);
+                if (modal) {
+                    // إغلاق عند النقر خارج النافذة
+                    modal.addEventListener('click', function(e) {
+                        if (e.target === modal) {
+                            closeModal(modalId);
+                        }
+                    });
+
+                    // إغلاق عند النقر على زر الإغلاق
+                    const closeBtn = modal.querySelector('.close-button');
+                    if (closeBtn) {
+                        closeBtn.addEventListener('click', function() {
+                            closeModal(modalId);
+                        });
+                    }
+                }
+            });
+
+            // إغلاق عند الضغط على Escape
+            document.addEventListener('keydown', function(e) {
+                if (e.key === 'Escape') {
+                    const openModal = document.querySelector('.modal.show');
+                    if (openModal) {
+                        closeModal(openModal.id);
+                    }
+                }
+            });
+        }
+
+        // إعداد زر تغيير الوضع
+        function setupThemeToggle() {
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle) {
+                themeToggle.addEventListener('click', toggleTheme);
+            }
+
+            // تطبيق الوضع المحفوظ
+            const savedTheme = localStorage.getItem('theme') || 'dark';
+            applyTheme(savedTheme);
+        }
+
+        // إعداد عرض/إخفاء كلمات المرور
+        function setupPasswordToggles() {
+            document.querySelectorAll('.password-toggle').forEach(button => {
+                button.addEventListener('click', function() {
+                    const passwordInput = this.previousElementSibling;
+                    const icon = this.querySelector('i');
+                    
+                    if (passwordInput.type === 'password') {
+                        passwordInput.type = 'text';
+                        icon.classList.remove('fa-eye');
+                        icon.classList.add('fa-eye-slash');
+                    } else {
+                        passwordInput.type = 'password';
+                        icon.classList.remove('fa-eye-slash');
+                        icon.classList.add('fa-eye');
+                    }
+                });
+            });
+        }
+
+        // معالجات النماذج
+        async function handleLogin(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const email = document.getElementById('login-email').value.trim();
+            const password = document.getElementById('login-password').value;
+            const messageDiv = document.getElementById('login-message');
+
+            if (!email || !password) {
+                showMessage(messageDiv, 'يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                showMessage(messageDiv, 'جاري تسجيل الدخول...', 'info');
+
+                const response = await fetch('/api/auth/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email, password })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.msg || 'فشل تسجيل الدخول');
+                }
+
+                // --- START: NEW 2FA Check ---
+                if (data.twoFactorRequired) {
+                    // إذا طلب الخادم كود، أظهر النافذة ولا تسجل الدخول
+                    showMessage(messageDiv, data.msg, 'info');
+                    resetEmail = email; // حفظ الإيميل لاستخدامه في التحقق
+                    showModal('2fa-modal');
+                } else {
+                    // إذا لم تكن المصادقة مطلوبة، سجل الدخول كالمعتاد
+                    localStorage.setItem('token', data.token);
+                    showMessage(messageDiv, 'تم تسجيل الدخول بنجاح!', 'success');
+
+                    setTimeout(() => {
+                        window.location.href = '/dashboard';
+                    }, 1500);
+                }
+                // --- END: NEW 2FA Check ---
+
+            } catch (error) {
+                showMessage(messageDiv, error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function handleRegister(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const username = document.getElementById('register-username').value.trim();
+            const email = document.getElementById('register-email').value.trim();
+            const password = document.getElementById('register-password').value;
+            const adafruitUsername = document.getElementById('register-adafruit-username').value.trim();
+            const adafruitApiKey = document.getElementById('register-adafruit-key').value.trim();
+            const messageDiv = document.getElementById('register-message');
+
+            if (!username || !email || !password) {
+                showMessage(messageDiv, 'يرجى ملء الحقول المطلوبة', 'error');
+                return;
+            }
+
+            if (password.length < 6) {
+                showMessage(messageDiv, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                showMessage(messageDiv, 'جاري إنشاء الحساب...', 'info');
+
+                const response = await fetch('/api/auth/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ 
+                        username, 
+                        email, 
+                        password, 
+                        adafruitUsername, 
+                        adafruitApiKey 
+                    })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.msg || 'فشل إنشاء الحساب');
+                }
+
+                showMessage(messageDiv, 'تم إنشاء الحساب بنجاح!', 'success');
+                
+                setTimeout(() => {
+                    showLoginCard();
+                }, 2000);
+
+            } catch (error) {
+                showMessage(messageDiv, error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function handleForgotPassword(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const email = document.getElementById('forgot-email').value.trim();
+            const messageDiv = document.getElementById('forgot-message');
+
+            if (!email) {
+                showMessage(messageDiv, 'يرجى إدخال البريد الإلكتروني', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                showMessage(messageDiv, 'جاري إرسال رمز إعادة التعيين...', 'info');
+
+                const response = await fetch('/api/auth/forgot-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.msg || 'فشل في إرسال الرمز');
+                }
+
+                resetEmail = email;
+                showMessage(messageDiv, 'تم إرسال رمز إعادة التعيين بنجاح!', 'success');
+                
+                setTimeout(() => {
+                    closeModal('forgot-password-modal');
+                    showModal('verification-modal');
+                }, 2000);
+
+            } catch (error) {
+                showMessage(messageDiv, error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function handleVerification(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const code = document.getElementById('verification-code').value.trim();
+            const messageDiv = document.getElementById('verification-message');
+
+            if (!code) {
+                showMessage(messageDiv, 'يرجى إدخال رمز التحقق', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                showMessage(messageDiv, 'جاري التحقق من الرمز...', 'info');
+
+                const response = await fetch('/api/auth/verify-reset-code', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: resetEmail, code })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.msg || 'رمز التحقق غير صحيح');
+                }
+
+                resetCode = code;
+                showMessage(messageDiv, 'تم التحقق بنجاح!', 'success');
+                
+                setTimeout(() => {
+                    closeModal('verification-modal');
+                    showModal('reset-password-modal');
+                }, 1500);
+
+            } catch (error) {
+                showMessage(messageDiv, error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function handleResetPassword(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+            const messageDiv = document.getElementById('reset-message');
+
+            if (!newPassword || !confirmPassword) {
+                showMessage(messageDiv, 'يرجى ملء جميع الحقول', 'error');
+                return;
+            }
+
+            if (newPassword !== confirmPassword) {
+                showMessage(messageDiv, 'كلمتا المرور غير متطابقتين', 'error');
+                return;
+            }
+
+            if (newPassword.length < 6) {
+                showMessage(messageDiv, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                showMessage(messageDiv, 'جاري تحديث كلمة المرور...', 'info');
+const response = await fetch('/api/auth/reset-password', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        email: resetEmail,
+                        code: resetCode,
+                        newPassword,
+                        confirmPassword // أضف هذا السطر
+                    })
+                });
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.msg || 'فشل في تحديث كلمة المرور');
+                }
+
+                showMessage(messageDiv, 'تم تحديث كلمة المرور بنجاح!', 'success');
+                
+                setTimeout(() => {
+                    closeModal('reset-password-modal');
+                    showLoginCard();
+                }, 2000);
+
+            } catch (error) {
+                showMessage(messageDiv, error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        // وظائف التحكم في الواجهة
+        function showLoginCard() {
+            document.getElementById('login-card').style.display = 'block';
+            document.getElementById('register-card').style.display = 'none';
+            clearAllMessages();
+        }
+
+        function showRegisterCard() {
+            document.getElementById('login-card').style.display = 'none';
+            document.getElementById('register-card').style.display = 'block';
+            clearAllMessages();
+        }
+
+        function showForgotPasswordModal() {
+            showModal('forgot-password-modal');
+        }
+
+        function showModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.add('show');
+                document.body.style.overflow = 'hidden';
+            }
+        }
+
+        function closeModal(modalId) {
+            const modal = document.getElementById(modalId);
+            if (modal) {
+                modal.classList.remove('show');
+                document.body.style.overflow = '';
+                
+                // مسح النموذج
+                const form = modal.querySelector('form');
+                if (form) {
+                    form.reset();
+                }
+                
+                // مسح الرسائل
+                const messageDiv = modal.querySelector('.form-message');
+                if (messageDiv) {
+                    messageDiv.classList.remove('show');
+                }
+            }
+        }
+
+        function toggleTheme() {
+            const currentTheme = document.documentElement.getAttribute('data-theme') || 'dark';
+            const newTheme = currentTheme === 'dark' ? 'light' : 'dark';
+            applyTheme(newTheme);
+            localStorage.setItem('theme', newTheme);
+        }
+
+        function applyTheme(theme) {
+            document.documentElement.setAttribute('data-theme', theme);
+            const themeToggle = document.getElementById('theme-toggle');
+            if (themeToggle) {
+                const icon = themeToggle.querySelector('i');
+                if (icon) {
+                    icon.className = theme === 'dark' ? 'fas fa-sun' : 'fas fa-moon';
+                }
+            }
+        }
+
+        function showMessage(element, message, type) {
+            if (!element) return;
+            
+            element.textContent = message;
+            element.className = `form-message ${type} show`;
+            
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    element.classList.remove('show');
+                }, 4000);
+            }
+        }
+
+        function clearAllMessages() {
+            document.querySelectorAll('.form-message').forEach(msg => {
+                msg.classList.remove('show');
+            });
+        }
+
+        function setLoading(loading) {
+            isLoading = loading;
+            const buttons = document.querySelectorAll('.btn');
+            buttons.forEach(btn => {
+                btn.disabled = loading;
+                if (loading) {
+                    btn.style.opacity = '0.7';
+                    btn.style.cursor = 'not-allowed';
+                } else {
+                    btn.style.opacity = '';
+                    btn.style.cursor = 'pointer';
+                }
+            });
+        }
+
+        function resendCode() {
+            if (resetEmail) {
+                document.getElementById('forgot-email').value = resetEmail;
+                closeModal('verification-modal');
+                showModal('forgot-password-modal');
+            }
+        }
+
+        async function handleCompleteSignup(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const password = document.getElementById('complete-password').value;
+            const adafruitUsername = document.getElementById('complete-adafruit-username').value;
+            const adafruitApiKey = document.getElementById('complete-adafruit-key').value;
+            const messageDiv = document.getElementById('complete-signup-message');
+            const token = localStorage.getItem('token');
+
+            if (password.length < 6) {
+                return showMessage(messageDiv, 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.', 'error');
+            }
+
+            try {
+                setLoading(true);
+                const response = await fetch('/api/auth/complete-google-signup', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
+                    body: JSON.stringify({ password, adafruitUsername, adafruitApiKey })
+                });
+                const data = await response.json();
+                if (!response.ok) throw new Error(data.msg);
+
+                showMessage(messageDiv, data.msg, 'success');
+                // تأكد من إعادة التوجيه إلى الصفحة الرئيسية
+                setTimeout(() => window.location.href = '/', 1500);
+
+            } catch (err) {
+                showMessage(messageDiv, err.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+
+        async function handle2FAVerification(e) {
+            e.preventDefault();
+            if (isLoading) return;
+
+            const twoFactorCode = document.getElementById('2fa-code').value.trim();
+            const messageDiv = document.getElementById('2fa-message');
+
+            if (!twoFactorCode) {
+                showMessage(messageDiv, 'يرجى إدخال رمز التحقق', 'error');
+                return;
+            }
+
+            try {
+                setLoading(true);
+                showMessage(messageDiv, 'جاري التحقق من الرمز...', 'info');
+
+                const response = await fetch('/api/auth/verify-2fa', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ email: resetEmail, twoFactorCode })
+                });
+
+                const data = await response.json();
+
+                if (!response.ok) {
+                    throw new Error(data.msg || 'فشل التحقق');
+                }
+
+                // عند النجاح، احفظ التوكن وسجل الدخول
+                localStorage.setItem('token', data.token);
+                showMessage(messageDiv, 'تم التحقق بنجاح! جاري تسجيل الدخول...', 'success');
+
+                setTimeout(() => {
+                    window.location.href = '/dashboard';
+                }, 1500);
+
+            } catch (error) {
+                showMessage(messageDiv, error.message, 'error');
+            } finally {
+                setLoading(false);
+            }
+        }
+    </script>
+ <script>
+// فنكشن فتح المودال
+function showSupportModal() {
+    const modal = document.getElementById('support-modal');
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.setAttribute('aria-hidden', 'false');
+        document.body.style.overflow = 'hidden';
+    }
+}
+
+// فنكشن إغلاق المودال  
+function closeSupportModal() {
+    const modal = document.getElementById('support-modal');
+    if (modal) {
+        modal.style.display = 'none';
+        modal.setAttribute('aria-hidden', 'true');
+        document.body.style.overflow = '';
+    }
+}
+
+// إغلاق المودال لما يكليك برة المحتوى
+document.addEventListener('DOMContentLoaded', function() {
+    const modal = document.getElementById('support-modal');
+    if (modal) {
+        modal.onclick = function(e) {
+            if (e.target === modal) {
+                closeSupportModal();
+            }
+        };
+    }
+    
+    // إغلاق بالـ Escape
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            closeSupportModal();
+        }
+    });
+});
+
+// منع خطأ الكونسول
+window.addEventListener('error', function(e) {
+    if (e.message && e.message.includes('listener indicated an asynchronous response')) {
+        e.preventDefault();
+        return false;
+    }
+});
+   // إصلاح وظيفة عرض وإخفاء النوافذ المنبثقة
+function showModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.style.display = 'flex';
+        modal.classList.add('show');
+        document.body.style.overflow = 'hidden';
+        
+        // إضافة خصائص إضافية للتأكد من الظهور
+        modal.style.opacity = '1';
+        modal.style.visibility = 'visible';
+        
+        console.log(`Modal ${modalId} displayed successfully`);
+    } else {
+        console.error(`Modal with ID '${modalId}' not found`);
+    }
+}
+
+function closeModal(modalId) {
+    const modal = document.getElementById(modalId);
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => {
+            modal.style.display = 'none';
+            modal.style.visibility = 'hidden';
+            document.body.style.overflow = '';
+        }, 300);
+    }
+}
+
+// إضافة event listener لإغلاق النافذة عند الضغط على زر الإغلاق
+document.addEventListener('DOMContentLoaded', function() {
+    const closeButtons = document.querySelectorAll('.close-button');
+    closeButtons.forEach(button => {
+        button.addEventListener('click', function() {
+            const modal = this.closest('.modal');
+            if (modal) {
+                closeModal(modal.id);
+            }
+        });
+    });
+});
+
+   </script>
+
+</body>
+</html>

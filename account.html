@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="إدارة حسابالذكية - تحديث المعلومات والإعدادات">
+    <meta name="robots" content="noindex, nofollow">
+    <meta name="mobile-web-app-capable" content="yes">
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#8A2BE2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+     
+    <title>⚡️ 𝒞𝑜𝓃𝓉𝓇𝑜𝓁𝑒𝓍 ⚙️ – 𝒜𝒞𝒞𝒪𝒰𝒩𝒯 👤</title>
+    
+    <link rel="icon" href="/favicon.png" type="image/png">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+      
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="/css/style.css">
+
+    <!-- Scripts -->
+    <script src="/js/auth-check.js" defer></script>
+    <script src="/js/account.js" defer></script>
+</head>
+<body>
+    <!-- Skip Navigation -->
+    <a href="#main-content" class="skip-link">تخطي إلى المحتوى الرئيسي</a>
+    
+    <!-- Header Navigation -->
+    <header class="header" role="banner">
+        <nav class="nav-container" role="navigation" aria-label="التنقل الرئيسي">
+            <a href="/dashboard" class="logo" aria-label="الصفحة الرئيسية">
+                <i class="fas fa-cube" aria-hidden="true"></i>
+لوحه التحكم             </a>
+            
+            <ul class="nav-menu" id="nav-menu">
+                <li class="nav-item">
+                    <a href="/dashboard" class="nav-link">
+                        <i class="fas fa-th-large" aria-hidden="true"></i>
+                        <span>لوحة التحكم</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/settings" class="nav-link">
+                        <i class="fas fa-cog" aria-hidden="true"></i>
+                        <span>الإعدادات</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/account" class="nav-link active" aria-current="page">
+                        <i class="fas fa-user-circle" aria-hidden="true"></i>
+                        <span>الحساب</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <button class="nav-link logout-btn" onclick="logout()" aria-label="تسجيل الخروج">
+                        <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
+                        <span>خروج</span>
+                    </button>
+                </li>
+            </ul>
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="فتح القائمة" aria-expanded="false">
+                <i class="fas fa-bars" aria-hidden="true"></i>
+            </button>
+        </nav>
+    </header>
+    
+    <!-- Main Content -->
+    <main id="main-content" class="account-container" role="main">
+         <div class="unified-card" id="main-account-content">
+            <!-- Page Header -->
+            <header class="page-header">
+                <h1 class="page-title">إدارة الحساب</h1>
+                <p class="page-subtitle">تحديث معلوماتك الشخصية وإعدادات الحساب</p>
+            </header>
+            
+            <!-- Account Information Display -->
+            <section class="account-info-section" aria-labelledby="info-title">
+                <h2 id="info-title" class="section-title">معلومات الحساب</h2>
+                
+                <div class="account-info">
+                    <div class="account-info-item">
+                        <span class="account-info-label">اسم المستخدم:</span>
+                        <span id="username-display" class="account-info-value">جار التحميل...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="account-info-label">البريد الإلكتروني:</span>
+                        <span id="email-display" class="account-info-value">جار التحميل...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="account-info-label">اسم مستخدم Adafruit:</span>
+                        <span id="adafruit-username-display" class="account-info-value">جار التحميل...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="account-info-label">تاريخ الانضمام:</span>
+                        <span id="join-date-display" class="account-info-value">جار التحميل...</span>
+                    </div>
+                    <div class="account-info-item">
+                        <span class="account-info-label">آخر تسجيل دخول:</span>
+                        <span id="last-login-display" class="account-info-value">جار التحميل...</span>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Account Settings Form -->
+            <section class="account-form-section" aria-labelledby="account-form-title">
+                <h2 id="account-form-title" class="section-title">تحديث معلومات الحساب</h2>
+                
+                <form id="account-form" class="account-form" novalidate>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="username" class="form-label">اسم المستخدم: <span class="required" aria-label="مطلوب">*</span></label>
+                            <input type="text" id="username" name="username" class="form-input" required
+                                   minlength="3" maxlength="50" placeholder="أدخل اسم المستخدم"
+                                   aria-describedby="username-help">
+                            <small id="username-help" class="form-help">3-50 حرف، يمكن أن يحتوي على أحرف وأرقام</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="email" class="form-label">البريد الإلكتروني: <span class="required" aria-label="مطلوب">*</span></label>
+                            <input type="email" id="email" name="email" class="form-input" required
+                                   placeholder="example@email.com" aria-describedby="email-help">
+                            <small id="email-help" class="form-help">سيتم استخدامه لتسجيل الدخول والإشعارات</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="password" class="form-label">كلمة المرور الجديدة: <span class="optional">(اختياري)</span></label>
+                        <div class="password-input-group">
+                            <input type="password" id="password" name="password" class="form-input"
+                                   minlength="6" placeholder="اتركه فارغاً إذا لم ترد تغييرها"
+                                   aria-describedby="password-help">
+                            <button type="button" class="password-toggle" onclick="togglePasswordVisibility('password')" aria-label="إظهار/إخفاء كلمة المرور">
+                                <i id="password-icon" class="fas fa-eye" aria-hidden="true"></i>
+                            </button>
+                        </div>
+                        <div id="password-strength" class="password-strength"></div>
+                        <div id="password-feedback" class="password-feedback"></div>
+                        <small id="password-help" class="form-help">6 أحرف على الأقل، يُفضل خليط من الأحرف والأرقام والرموز</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" id="update-account-btn" class="btn btn-primary">
+                            <i class="fas fa-save" aria-hidden="true"></i>
+                            حفظ التغييرات
+                        </button>
+                        <button type="button" id="change-password-btn" class="btn btn-secondary">
+                            <i class="fas fa-key" aria-hidden="true"></i>
+                            تغيير كلمة المرور
+                        </button>
+                    </div>
+                </form>
+            </section>
+            
+            <!-- Adafruit Settings -->
+            <section class="adafruit-section" aria-labelledby="adafruit-title">
+                <h2 id="adafruit-title" class="section-title">إعدادات Adafruit IO</h2>
+                <p class="section-description">قم بتحديث معلومات الاتصال مع خدمة Adafruit IO</p>
+                
+                <form id="adafruit-form" class="adafruit-form" novalidate>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="adafruit-username" class="form-label">اسم مستخدم Adafruit:</label>
+                            <input type="text" id="adafruit-username" name="adafruit-username" class="form-input"
+                                   placeholder="your-adafruit-username" aria-describedby="adafruit-username-help">
+                            <small id="adafruit-username-help" class="form-help">اسم المستخدم في حساب Adafruit IO</small>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="adafruit-key" class="form-label">مفتاح API:</label>
+                            <div class="password-input-group">
+                                <input type="password" id="adafruit-key" name="adafruit-key" class="form-input"
+                                       placeholder="أدخل مفتاح API الخاص بك" aria-describedby="adafruit-key-help">
+                                <button type="button" class="password-toggle" onclick="togglePasswordVisibility('adafruit-key')" aria-label="إظهار/إخفاء مفتاح API">
+                                    <i id="adafruit-key-icon" class="fas fa-eye" aria-hidden="true"></i>
+                                </button>
+                            </div>
+                            <small id="adafruit-key-help" class="form-help">يمكنك العثور عليه في إعدادات حساب Adafruit IO</small>
+                        </div>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="submit" class="btn btn-primary">
+                            <i class="fas fa-link" aria-hidden="true"></i>
+                            حفظ إعدادات Adafruit
+                        </button>
+                        <a href="https://io.adafruit.com" target="_blank" rel="noopener noreferrer" class="btn btn-secondary">
+                            <i class="fas fa-external-link-alt" aria-hidden="true"></i>
+                            فتح Adafruit IO
+                        </a>
+                    </div>
+                </form>
+            </section>
+            
+            <!-- Security Settings -->
+            <section class="security-section" aria-labelledby="security-title">
+                <h2 id="security-title" class="section-title">إعدادات الأمان</h2>
+                
+                <div class="security-options">
+                    <div class="security-option">
+                        <div class="security-option-info">
+                            <h3>المصادقة الثنائية</h3>
+                            <p>إضافة طبقة حماية إضافية لحسابك</p>
+                        </div>
+                        <button type="button" id="enable-2fa-btn" class="btn btn-secondary">
+                            <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                            تفعيل
+                        </button>
+                    </div>
+                    
+                    <div class="security-option">
+                        <div class="security-option-info">
+                            <h3>الجلسات النشطة</h3>
+                            <p>عرض وإدارة جلسات تسجيل الدخول النشطة</p>
+                        </div>
+                        <button type="button" id="view-sessions-btn" class="btn btn-secondary">
+                            <i class="fas fa-list" aria-hidden="true"></i>
+                            عرض
+                        </button>
+                    </div>
+
+                    <div class="security-option" id="google-link-section" style="display: none;">
+                        <div class="security-option-info">
+                            <h3>الربط بحساب جوجل</h3>
+                            <p id="google-link-status">حسابك غير مرتبط بجوجل.</p>
+                        </div>
+                        <button type="button" id="google-link-btn" class="btn btn-secondary">ربط الحساب</button>
+                    </div>
+                </div>
+            </section>
+            
+            <!-- Data Management -->
+            <section class="data-section" aria-labelledby="data-title">
+                <h2 id="data-title" class="section-title">إدارة البيانات</h2>
+                
+                <div class="data-actions">
+                    <button type="button" id="export-data-btn" class="btn btn-secondary">
+                        <i class="fas fa-download" aria-hidden="true"></i>
+                        تصدير البيانات
+                    </button>
+                    <small class="form-help">تحميل نسخة احتياطية من جميع بياناتك</small>
+                    
+                    <button type="button" id="import-data-btn" class="btn btn-secondary">
+                        <i class="fas fa-upload" aria-hidden="true"></i>
+                        استيراد البيانات
+                    </button>
+                    <small class="form-help">استعادة البيانات من نسخة احتياطية</small>
+                </div>
+            </section>
+            
+            <!-- Account Statistics -->
+            <section class="stats-section" aria-labelledby="stats-title">
+                <h2 id="stats-title" class="section-title">إحصائيات الحساب</h2>
+                
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-cube" aria-hidden="true"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="total-widgets">0</span>
+                            <span class="stat-label">إجمالي الأدوات</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-mouse-pointer" aria-hidden="true"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="total-commands">0</span>
+                            <span class="stat-label">الأوامر المُرسلة</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-clock" aria-hidden="true"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="active-days">0</span>
+                            <span class="stat-label">أيام النشاط</span>
+                        </div>
+                    </div>
+                    
+                    <div class="stat-card">
+                        <div class="stat-icon">
+                            <i class="fas fa-chart-line" aria-hidden="true"></i>
+                        </div>
+                        <div class="stat-info">
+                            <span class="stat-value" id="success-rate">100%</span>
+                            <span class="stat-label">معدل النجاح</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- زر عرض صفحة "عني" -->
+            <section class="about-button-section">
+                <button id="show-about-btn" class="btn btn-about">
+                    <i class="fas fa-user-circle"></i>
+                    <span>نبذة عن صانع الموقع</span>
+                </button>
+            </section>
+            
+            <!-- Danger Zone -->
+            <section class="danger-zone" aria-labelledby="danger-title">
+                <h2 id="danger-title" class="danger-title">
+                    <i class="fas fa-exclamation-triangle" aria-hidden="true"></i>
+                    منطقة الخطر
+                </h2>
+                <p>الإجراءات التالية لا يمكن التراجع عنها. يرجى التأكد قبل المتابعة.</p>
+                
+                <div class="danger-actions">
+                    <button type="button" class="btn btn-danger" onclick="clearAllData()">
+                        <i class="fas fa-broom" aria-hidden="true"></i>
+                        مسح جميع البيانات
+                    </button>
+                    <small class="form-help danger-help">حذف جميع الأدوات والإعدادات مع الاحتفاظ بالحساب</small>
+                    
+                    <button type="button" id="delete-account-btn" class="btn btn-danger">
+                        <i class="fas fa-trash-alt" aria-hidden="true"></i>
+                        حذف الحساب نهائياً
+                    </button>
+                    <small class="form-help danger-help">سيتم حذف جميع بياناتك وأدواتك نهائياً</small>
+                </div>
+            </section>
+        </div>
+
+        <!-- قسم عني - مخفي افتراضياً -->
+        <section class="about-section unified-card" id="about-section" style="display: none;">
+            <div class="about-container">
+                <!-- الصورة الشخصية -->
+                <div class="profile-image-container">
+                    <div class="profile-image">
+                        <img src="/images/profile.jpeg" alt="حسين عبد الخالق" id="profile-img" />
+                        <div class="profile-ring"></div>
+                    </div>
+                </div>
+                
+                <!-- المحتوى -->
+                <div class="about-content">
+                    <h2 class="about-title">نبذه عن صانع الموقع</h2>
+                    
+                    <div class="intro-text">
+                        <p class="greeting">مرحباً، أنا حسين عبد الخالق</p>
+                    </div>
+                    
+                  <div class="about-description">
+    <p id="age-paragraph">عمري 14 سنة، ومبرمج في الأنظمة المدمجة (Embedded Systems).</p>
+    <p>نفذت أكثر من 45 مشروعاً جامعياً وعلمياً لمختلف الفئات.</p>
+    <p>وأنا صانع هذا الموقع ومالكه الوحيد.</p>
+    <p>قمت بإنشائه لمساعدة المستخدمين في ربط io.adafruit بواجهة بسيطة لتسهيل التحكم في مشاريع إنترنت الأشياء (IoT) والمنازل الذكية (Smart Home).</p>
+</div>
+
+                    <div class="contact-info">
+                        <p class="contact-intro">في إنتظار آرائكم حول موقعي.</p>
+                        <p class="contact-subtitle">للشكاوي والاقتراحات:</p>
+                        
+                        <div class="contact-methods">
+                            <!-- البريد الإلكتروني -->
+                            <a href="mailto:hussianabdk577@gmail.com" class="contact-item email-contact">
+                                <div class="contact-icon">
+                                    <i class="fas fa-envelope"></i>
+                                </div>
+                                <div class="contact-details">
+                                    <span class="contact-label">البريد الإلكتروني</span>
+                                    <span class="contact-value">hussianabdk577@gmail.com</span>
+                                </div>
+                            </a>
+                            
+                            <!-- الواتساب -->
+                            <a href="https://wa.me/qr/JMHQSJSI4SHIN1" target="_blank" class="contact-item whatsapp-contact">
+                                <div class="contact-icon">
+                                    <i class="fab fa-whatsapp"></i>
+                                </div>
+                                <div class="contact-details">
+                                    <span class="contact-label">للتواصل في مشاريع الأنظمة المدمجة</span>
+                                    <span class="contact-value">رابط واتساب</span>
+                                </div>
+                            </a>
+                        </div>
+                    </div>
+                    
+                    <!-- زر العودة -->
+                    <div class="back-button-container">
+                        <button id="back-to-account-btn" class="btn btn-secondary">
+                            <i class="fas fa-arrow-right"></i>
+                            <span>العودة للحساب</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+    
+    <!-- Common Scripts -->
+    <script>
+        function togglePasswordVisibility(inputId) {
+            const input = document.getElementById(inputId);
+            const icon = document.getElementById(inputId + '-icon');
+            
+            if (input.type === 'password') {
+                input.type = 'text';
+                icon.className = 'fas fa-eye-slash';
+            } else {
+                input.type = 'password';
+                icon.className = 'fas fa-eye';
+            }
+        }
+        
+        function toggleMobileMenu() {
+            const menu = document.getElementById('nav-menu');
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            const isOpen = menu.classList.contains('active');
+            
+            menu.classList.toggle('active');
+            toggle.setAttribute('aria-expanded', !isOpen);
+            toggle.querySelector('i').className = isOpen ? 'fas fa-bars' : 'fas fa-times';
+        }
+        
+        function logout() {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/';
+            }
+        }
+
+        // دالة لإدارة صفحة عني - كود مبسط ومضمون
+        document.addEventListener('DOMContentLoaded', function() {
+            const showBtn = document.getElementById('show-about-btn');
+            const backBtn = document.getElementById('back-to-account-btn');
+            const aboutSection = document.getElementById('about-section');
+            const mainContent = document.getElementById('main-account-content');
+            
+            console.log('Elements found:', { showBtn: !!showBtn, backBtn: !!backBtn, aboutSection: !!aboutSection, mainContent: !!mainContent });
+            
+            if (showBtn) {
+                showBtn.onclick = function() {
+                    console.log('Show button clicked');
+                    if (mainContent) mainContent.style.display = 'none';
+                    if (aboutSection) aboutSection.style.display = 'block';
+                    window.scrollTo(0, 0);
+                };
+            }
+            
+            if (backBtn) {
+                backBtn.onclick = function() {
+                    console.log('Back button clicked');
+                    if (aboutSection) aboutSection.style.display = 'none';
+                    if (mainContent) mainContent.style.display = 'block';
+                    window.scrollTo(0, 0);
+                };
+            }
+        });
+    </script>
+
+<!-- قبل </body> -->
+<script src="js/toast-notifications.js"></script>
+<script src="js/account.js" defer></script>
+
+</body>
+</html>

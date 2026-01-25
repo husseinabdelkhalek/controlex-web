@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl" data-theme="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="إعداداتالذكية - إضافة وإدارة أدوات التحكم">
+    <meta name="robots" content="noindex, nofollow">
+    <link rel="icon" href="/favicon.png" type="image/png">
+
+    <!-- PWA Meta Tags -->
+    <meta name="theme-color" content="#8A2BE2">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="default">
+
+    <title>⚡️ 𝒞𝑜𝓃𝓉𝓇𝑜𝓁𝑒𝓍 ⚙️ – 𝒮𝑒𝓉𝓉𝒾𝓃𝑔𝓈 🛠️</title>
+
+    <!-- Stylesheets -->
+    <link rel="stylesheet" href="/css/style.css">
+
+    <!-- Scripts -->
+    <script src="/js/auth-check.js" defer></script>
+    <script src="/js/icon-picker.js" defer></script>
+    <script src="/js/settings.js" defer></script>
+</head>
+<body data-theme="dark">
+    <!-- Toast Container -->
+    <div id="toast-container" style="position: fixed; top: 20px; right: 20px; z-index: 1050; display: flex; flex-direction: column; gap: 10px;"></div>
+    
+    <!-- Skip Navigation -->
+    <a href="#main-content" class="skip-link">تخطي إلى المحتوى الرئيسي</a>
+    
+    <!-- Header Navigation -->
+    <header class="header" role="banner">
+        <nav class="nav-container" role="navigation" aria-label="التنقل الرئيسي">
+            <a href="/dashboard" class="logo" aria-label="الصفحة الرئيسية">
+                <i class="fas fa-cube" aria-hidden="true"></i>
+لوحه التحكم             </a>
+            
+            <ul class="nav-menu" id="nav-menu">
+                <li class="nav-item">
+                    <a href="/dashboard" class="nav-link">
+                        <i class="fas fa-th-large" aria-hidden="true"></i>
+                        <span>لوحة التحكم</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/settings" class="nav-link active" aria-current="page">
+                        <i class="fas fa-cog" aria-hidden="true"></i>
+                        <span>الإعدادات</span>
+                    </a>
+                </li>
+                <li class="nav-item">
+                    <a href="/account" class="nav-link">
+                        <i class="fas fa-user-circle" aria-hidden="true"></i>
+                        <span>الحساب</span>
+                    </a>
+                </li>
+
+                <li class="nav-item">
+                    <button class="nav-link logout-btn" onclick="logout()" aria-label="تسجيل الخروج">
+                        <i class="fas fa-sign-out-alt" aria-hidden="true"></i>
+                        <span>خروج</span>
+                    </button>
+                </li>
+            </ul>
+            
+            <!-- Mobile Menu Toggle -->
+            <button class="mobile-menu-toggle" onclick="toggleMobileMenu()" aria-label="فتح القائمة" aria-expanded="false">
+                <i class="fas fa-bars" aria-hidden="true"></i>
+            </button>
+        </nav>
+    </header>
+    
+    <!-- Main Content -->
+    <main id="main-content" class="unified-container" role="main">
+        <div class="unified-card">
+            <!-- Page Header -->
+            <header class="unified-header">
+                <h1 class="unified-title">إعدادات الأدوات</h1>
+                <p class="unified-subtitle">إضافة وإدارة أدوات التحكم في لوحة التحكم</p>
+            </header>
+            
+            <!-- Widget Creation Form -->
+            <section class="unified-section" aria-labelledby="form-title">
+                <h2 id="form-title" class="unified-section-title">إضافة أداة جديدة</h2>
+                
+                <form id="widget-form" class="unified-form" novalidate>
+                    <!-- Basic Information -->
+                    <fieldset class="unified-fieldset">
+                        <legend class="unified-legend">المعلومات الأساسية</legend>
+                        
+                        <div class="unified-form-row">
+                            <div class="unified-form-group">
+                                <label for="widget-name" class="unified-label">اسم الأداة: <span class="unified-required" aria-label="مطلوب">*</span></label>
+                                <input type="text" id="widget-name" name="widget-name" class="unified-input" required 
+                                       placeholder="مثال: مصباح غرفة النوم" 
+                                       minlength="2" maxlength="50"
+                                       aria-describedby="widget-name-help">
+                                <small id="widget-name-help" class="unified-help">أدخل اسماً وصفياً للأداة</small>
+                            </div>
+                            
+                            <div class="unified-form-group">
+                                <label for="feed-name" class="unified-label">اسم Feed في Adafruit: <span class="unified-required" aria-label="مطلوب">*</span></label>
+                                <input type="text" id="feed-name" name="feed-name" class="unified-input" required 
+                                       placeholder="مثال: bedroom-light" 
+                                       pattern="[a-zA-Z0-9\-_]+" 
+                                       aria-describedby="feed-name-help">
+                                <small id="feed-name-help" class="unified-help">اسم Feed كما هو موجود في حساب Adafruit IO</small>
+                            </div>
+                        </div>
+                        
+                        <div class="form-row">
+                            <div class="unified-form-group">
+                                <label for="widget-type" class="unified-label">نوع الأداة: <span class="unified-required" aria-label="مطلوب">*</span></label>
+                                <select id="widget-type" name="widget-type" class="unified-select" required aria-describedby="widget-type-help">
+                                    <option value="toggle">مفتاح تشغيل/إيقاف</option>
+                                    <option value="push">زر ضغط (Push Button)</option>
+                                    <option value="sensor">حساس</option>
+                                    <option value="terminal">ترمنال</option>
+                                    <option value="slider">سلايدر (Slider)</option>
+                                    <option value="joystick">جويستيك (Joystick)</option>
+                                </select>
+                                <small id="widget-type-help" class="unified-help">اختر نوع الأداة المناسب لاستخدامك</small>
+                            </div>
+                            
+                            <div class="unified-form-group">
+                                <label for="widget-icon" class="unified-label">الأيقونة: <span class="unified-required" aria-label="مطلوب">*</span></label>
+                                <input type="text" id="widget-icon" name="widget-icon" class="unified-input" required readonly
+                                       aria-describedby="widget-icon-help">
+                                <small id="widget-icon-help" class="unified-help">انقر لاختيار أيقونة مناسبة</small>
+                                <!-- Icon picker button will be added by JavaScript -->
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Appearance Settings -->
+                    <fieldset class="form-fieldset color-fields">
+                        <legend class="fieldset-legend">إعدادات المظهر</legend>
+                        
+                        <div class="form-row">
+                            <div class="unified-form-group">
+                                <label for="widget-primary-color" class="unified-label">اللون الأساسي:</label>
+                                <div class="unified-color-group">
+                                    <input type="color" id="widget-primary-color" name="widget-primary-color" 
+                                           class="unified-color-input" value="#8A2BE2" aria-describedby="primary-color-help">
+                                    <input type="text" id="widget-primary-color-text" class="unified-color-text" 
+                                           placeholder="#8A2BE2" maxlength="7" pattern="#[0-9A-Fa-f]{6}">
+                                </div>
+                                <small id="primary-color-help" class="unified-help">لون الأيقونة والعناصر الأساسية</small>
+                            </div>
+                            
+                            <div class="unified-form-group">
+                                <label for="widget-active-color" class="unified-label">لون التشغيل:</label>
+                                <div class="unified-color-group">
+                                    <input type="color" id="widget-active-color" name="widget-active-color" 
+                                           class="unified-color-input" value="#00e5ff" aria-describedby="active-color-help">
+                                    <input type="text" id="widget-active-color-text" class="unified-color-text" 
+                                           placeholder="#00e5ff" maxlength="7" pattern="#[0-9A-Fa-f]{6}">
+                                </div>
+                                <small id="active-color-help" class="unified-help">لون الأداة عند التشغيل</small>
+                            </div>
+                        </div>
+                        
+                        <div class="unified-form-group">
+                            <label for="widget-glow-color" class="unified-label">لون الإضاءة:</label>
+                            <div class="unified-color-group">
+                                <input type="color" id="widget-glow-color" name="widget-glow-color" 
+                                       class="unified-color-input" value="#8A2BE2" aria-describedby="glow-color-help">
+                                <input type="text" id="widget-glow-color-text" class="unified-color-text" 
+                                       placeholder="#8A2BE2" maxlength="7" pattern="#[0-9A-Fa-f]{6}">
+                            </div>
+                            <small id="glow-color-help" class="unified-help">لون الإضاءة والتأثيرات البصرية</small>
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Sensor Settings -->
+                    <fieldset class="unified-fieldset unit-field" style="display: none;">
+                        <legend class="unified-legend">إعدادات الحساس</legend>
+                        
+                        <div class="unified-form-group">
+                            <label for="widget-unit" class="unified-label">الوحدة (للحساسات):</label>
+                            <input type="text" id="widget-unit" name="widget-unit" class="unified-input" 
+                                   placeholder="مثال: °C, %, Volt" maxlength="10"
+                                   aria-describedby="widget-unit-help">
+                            <small id="widget-unit-help" class="unified-help">وحدة القياس التي ستظهر مع القيمة</small>
+                        </div>
+                    </fieldset>
+
+                    <!-- Slider Settings -->
+                    <fieldset class="unified-fieldset slider-fields" style="display: none;">
+                        <legend class="unified-legend">إعدادات السلايدر</legend>
+                        
+                        <div class="unified-form-row">
+                            <div class="unified-form-group">
+                                <label for="widget-min" class="unified-label">القيمة الصغرى:</label>
+                                <input type="number" id="widget-min" name="widget-min" class="unified-input" 
+                                       placeholder="مثال: 0" value="0"
+                                       aria-describedby="widget-min-help">
+                                <small id="widget-min-help" class="unified-help">أقل قيمة للسلايدر</small>
+                            </div>
+                            
+                            <div class="unified-form-group">
+                                <label for="widget-max" class="unified-label">القيمة العظمى:</label>
+                                <input type="number" id="widget-max" name="widget-max" class="unified-input" 
+                                       placeholder="مثال: 100" value="100"
+                                       aria-describedby="widget-max-help">
+                                <small id="widget-max-help" class="unified-help">أعلى قيمة للسلايدر</small>
+                            </div>
+                        </div>
+
+                        
+                        </div>
+
+                    </fieldset>
+
+                    <!-- Joystick Settings -->
+                    <fieldset class="unified-fieldset joystick-fields" style="display: none;">
+                        <legend class="unified-legend">إعدادات الجويستيك</legend>
+
+                        <p class="unified-help" style="margin-bottom: 20px;">
+                            أدخل الأوامر التي سيتم إرسالها عند تحريك عصا التحكم. الأوامر القطرية اختيارية.
+                        </p>
+
+                        <div class="unified-form-row">
+                            <div class="unified-form-group">
+                                <label for="joystick-up" class="unified-label">أمر الأعلى <span class="unified-required">*</span></label>
+                                <input type="text" id="joystick-up" name="joystick-up" class="unified-input" placeholder="UP">
+                            </div>
+                            <div class="unified-form-group">
+                                <label for="joystick-down" class="unified-label">أمر الأسفل <span class="unified-required">*</span></label>
+                                <input type="text" id="joystick-down" name="joystick-down" class="unified-input" placeholder="DOWN">
+                            </div>
+                        </div>
+                        <div class="unified-form-row">
+                            <div class="unified-form-group">
+                                <label for="joystick-left" class="unified-label">أمر اليسار <span class="unified-required">*</span></label>
+                                <input type="text" id="joystick-left" name="joystick-left" class="unified-input" placeholder="LEFT">
+                            </div>
+                            <div class="unified-form-group">
+                                <label for="joystick-right" class="unified-label">أمر اليمين <span class="unified-required">*</span></label>
+                                <input type="text" id="joystick-right" name="joystick-right" class="unified-input" placeholder="RIGHT">
+                            </div>
+                        </div>
+
+                        <div class="unified-form-row">
+                            <div class="unified-form-group">
+                                <label for="joystick-up-left" class="unified-label">أمر الأعلى-يسار</label>
+                                <input type="text" id="joystick-up-left" name="joystick-up-left" class="unified-input" placeholder="UP_LEFT">
+                            </div>
+                            <div class="unified-form-group">
+                                <label for="joystick-up-right" class="unified-label">أمر الأعلى-يمين</label>
+                                <input type="text" id="joystick-up-right" name="joystick-up-right" class="unified-input" placeholder="UP_RIGHT">
+                            </div>
+                        </div>
+                        <div class="unified-form-row">
+                            <div class="unified-form-group">
+                                <label for="joystick-down-left" class="unified-label">أمر الأسفل-يسار</label>
+                                <input type="text" id="joystick-down-left" name="joystick-down-left" class="unified-input" placeholder="DOWN_LEFT">
+                            </div>
+                            <div class="unified-form-group">
+                                <label for="joystick-down-right" class="unified-label">أمر الأسفل-يمين</label>
+                                <input type="text" id="joystick-down-right" name="joystick-down-right" class="unified-input" placeholder="DOWN_RIGHT">
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Control Commands -->
+                    <fieldset class="form-fieldset command-fields">
+                        <legend class="fieldset-legend">أوامر التحكم</legend>
+                        
+                        <div class="form-row">
+                            <div class="unified-form-group">
+                                <label for="on-command" class="unified-label">أمر التشغيل: <span class="unified-required" aria-label="مطلوب">*</span></label>
+                                <input type="text" id="on-command" name="on-command" class="unified-input" 
+                                       placeholder="مثال: ON, 1, OPEN" maxlength="20"
+                                       aria-describedby="on-command-help">
+                                <small id="on-command-help" class="unified-help">الأمر الذي سيُرسل عند التشغيل</small>
+                            </div>
+                            
+                            <div class="unified-form-group">
+                                <label for="off-command" class="unified-label">أمر الإيقاف:</label>
+                                <input type="text" id="off-command" name="off-command" class="unified-input" 
+                                       placeholder="مثال: OFF, 0, CLOSE" maxlength="20"
+                                       aria-describedby="off-command-help">
+                                <small id="off-command-help" class="unified-help">الأمر الذي سيُرسل عند الإيقاف</small>
+                            </div>
+                        </div>
+                    </fieldset>
+                    
+                    <!-- Form Actions -->
+                    <div class="unified-form-actions">
+                        <button type="submit" class="unified-button unified-button-primary">
+                            <i class="fas fa-plus" aria-hidden="true"></i>
+                            إضافة الأداة
+                        </button>
+                        <button type="reset" class="unified-button unified-button-secondary">
+                            <i class="fas fa-undo" aria-hidden="true"></i>
+                            إعادة تعيين
+                        </button>
+                    </div>
+                </form>
+            </section>
+            
+            <!-- Configured Widgets List -->
+            <section class="unified-section" aria-labelledby="configured-title">
+                <h2 id="configured-title" class="unified-section-title">الأدوات المكونة</h2>
+                <div id="configured-list" class="unified-list" role="region" aria-live="polite">
+                    <!-- Widgets will be loaded here by JavaScript -->
+                </div>
+            </section>
+        </div>
+    </main>
+    
+    <!-- Support Modal -->
+    <!-- تم حذف نافذة الدعم الفني وزرها بناءً على طلبك -->
+    
+    <!-- Common Scripts -->
+    <script>
+        function toggleMobileMenu() {
+            const menu = document.getElementById('nav-menu');
+            const toggle = document.querySelector('.mobile-menu-toggle');
+            const isOpen = menu.classList.contains('active');
+            
+            menu.classList.toggle('active');
+            toggle.setAttribute('aria-expanded', !isOpen);
+            toggle.querySelector('i').className = isOpen ? 'fas fa-bars' : 'fas fa-times';
+        }
+        
+        function logout() {
+            if (confirm('هل أنت متأكد من تسجيل الخروج؟')) {
+                localStorage.clear();
+                sessionStorage.clear();
+                window.location.href = '/';
+            }
+        }
+        
+        // // Support modal functionality
+        // document.addEventListener('DOMContentLoaded', function() {
+        //     const supportBtn = document.getElementById('support-gear-btn');
+        //     const supportModal = document.getElementById('support-modal');
+        //     const closeBtn = supportModal.querySelector('.close-button');
+            
+        //     if (supportBtn && supportModal) {
+        //         supportBtn.addEventListener('click', function() {
+        //             supportModal.style.display = 'flex';
+        //             setTimeout(() => supportModal.classList.add('show'), 10);
+        //         });
+                
+        //         closeBtn.addEventListener('click', function() {
+        //             supportModal.classList.remove('show');
+        //             setTimeout(() => supportModal.style.display = 'none', 300);
+        //         });
+                
+        //         supportModal.addEventListener('click', function(e) {
+        //             if (e.target === supportModal) {
+        //                 supportModal.classList.remove('show');
+        //                 setTimeout(() => supportModal.style.display = 'none', 300);
+        //             }
+        //         });
+        //     }
+        // });
+ 
+ </script>
+
+<!-- قبل </body> -->
+<script src="js/toast-notifications.js"></script>
+<script src="js/icon-picker.js" defer></script>
+<script src="js/settings.js" defer></script>
+
+</body>
+</html>

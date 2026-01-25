@@ -1,0 +1,226 @@
+/* ==================== تصميم عصا التحكم ==================== */
+.joystick-container {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: linear-gradient(135deg, rgba(13, 12, 29, 0.8), rgba(26, 24, 62, 0.9));
+    border-radius: 24px;
+    box-shadow: inset 0 0 20px rgba(138, 43, 226, 0.2);
+    overflow: hidden;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    -moz-user-select: none;
+    -ms-user-select: none;
+}
+
+.joystick-base {
+    width: 120px;
+    height: 120px;
+    background: rgba(138, 43, 226, 0.1);
+    border: 2px solid rgba(138, 43, 226, 0.3);
+    border-radius: 50%;
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 
+        0 0 20px rgba(138, 43, 226, 0.2),
+        inset 0 0 15px rgba(0, 229, 255, 0.2);
+    transition: border-color 0.3s ease, box-shadow 0.3s ease;
+}
+
+.joystick-base::before {
+    content: '';
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    border-radius: 50%;
+    background: radial-gradient(circle, rgba(138, 43, 226, 0.1) 0%, transparent 70%);
+    animation: glow 2s infinite alternate;
+}
+
+.joystick-stick {
+    width: 40px;
+    height: 40px;
+    background: linear-gradient(135deg, var(--primary-violet), var(--primary-cyan));
+    border-radius: 50%;
+    position: absolute;
+    cursor: move;
+    transform: translate(-50%, -50%);
+    top: 50%;
+    left: 50%;
+    transition: transform 0.1s ease, box-shadow 0.3s ease;
+    box-shadow: 
+        0 2px 8px rgba(138, 43, 226, 0.4),
+        0 0 15px rgba(0, 229, 255, 0.3),
+        inset 0 0 10px rgba(255, 255, 255, 0.3);
+    touch-action: none;
+    z-index: 2;
+}
+
+.joystick-stick::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 40px;
+    height: 40px;
+    transform: translate(-50%, -50%);
+    background: rgba(255, 255, 255, 0.1);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+/* حالة التفاعل */
+.joystick-container.active .joystick-base {
+    border-color: rgba(0, 229, 255, 0.5);
+    box-shadow: 
+        0 0 30px rgba(138, 43, 226, 0.3),
+        inset 0 0 20px rgba(0, 229, 255, 0.3);
+}
+
+.joystick-container.active .joystick-stick {
+    box-shadow: 
+        0 4px 15px rgba(0, 229, 255, 0.6),
+        0 0 30px rgba(138, 43, 226, 0.4),
+        inset 0 0 15px rgba(255, 255, 255, 0.4);
+    transition: none; /* إزالة التأخير أثناء السحب */
+}
+
+/* تحسينات للتفاعل */
+.joystick-container::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border-radius: 24px;
+    border: 1px solid rgba(138, 43, 226, 0.2);
+    pointer-events: none;
+    transition: border-color 0.3s ease;
+}
+
+.joystick-container.active::after {
+    border-color: rgba(0, 229, 255, 0.3);
+}
+
+/* مؤشر الاتجاه النشط */
+.direction-indicator.active {
+    background: rgba(0, 229, 255, 0.4);
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+    transform: scale(1.2);
+}
+
+/* تحسينات للموبايل */
+@media (max-width: 768px) {
+    .joystick-base {
+        width: 100px;
+        height: 100px;
+    }
+
+    .joystick-stick {
+        width: 34px;
+        height: 34px;
+    }
+}
+
+@media (max-width: 480px) {
+    .joystick-base {
+        width: 90px;
+        height: 90px;
+    }
+
+    .joystick-stick {
+        width: 30px;
+        height: 30px;
+    }
+}
+
+/* المؤشرات الاتجاهية */
+.joystick-indicators {
+    position: absolute;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+}
+
+.direction-indicator {
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: rgba(138, 43, 226, 0.2);
+    transition: all 0.3s ease;
+}
+
+.direction-indicator.active {
+    background: rgba(0, 229, 255, 0.4);
+    box-shadow: 0 0 15px rgba(0, 229, 255, 0.4);
+    transform: scale(1.2);
+}
+
+.direction-indicator.up { top: 10px; left: 50%; transform: translateX(-50%); }
+.direction-indicator.right { right: 10px; top: 50%; transform: translateY(-50%); }
+.direction-indicator.down { bottom: 10px; left: 50%; transform: translateX(-50%); }
+.direction-indicator.left { left: 10px; top: 50%; transform: translateY(-50%); }
+
+/* Diagonal indicators */
+.direction-indicator.up-right { top: 20px; right: 20px; }
+.direction-indicator.up-left { top: 20px; left: 20px; }
+.direction-indicator.down-right { bottom: 20px; right: 20px; }
+.direction-indicator.down-left { bottom: 20px; left: 20px; }
+
+/* التأثيرات الحركية */
+@keyframes glow {
+    from { opacity: 0.5; }
+    to { opacity: 1; }
+}
+
+/* وضع التعطيل */
+.joystick-container.disabled {
+    opacity: 0.7;
+    cursor: not-allowed;
+}
+
+.joystick-container.disabled .joystick-stick {
+    cursor: not-allowed;
+    background: #666;
+    box-shadow: none;
+}
+
+/* الاستجابة للموبايل */
+@media (max-width: 768px) {
+    .joystick-base {
+        width: 140px;
+        height: 140px;
+    }
+
+    .joystick-stick {
+        width: 50px;
+        height: 50px;
+    }
+
+    .joystick-stick::before {
+        width: 34px;
+        height: 34px;
+    }
+}
+
+@media (max-width: 480px) {
+    .joystick-base {
+        width: 120px;
+        height: 120px;
+    }
+
+    .joystick-stick {
+        width: 44px;
+        height: 44px;
+    }
+
+    .joystick-stick::before {
+        width: 30px;
+        height: 30px;
+    }
+}

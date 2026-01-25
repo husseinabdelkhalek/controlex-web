@@ -1,0 +1,41 @@
+/* START: 2FA Button & Toast Style Fix V12.0 */
+#enable-2fa-btn {
+    min-width: 150px;
+    transition: all 0.3s ease;
+    border: 1px solid transparent;
+    color: white;
+    font-weight: 600;
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+}
+
+/* حالة التفعيل (الزر يعرض "تفعيل") - أخضر زجاجي */
+#enable-2fa-btn[data-status="off"] {
+    background: rgba(16, 185, 129, 0.4); /* Green Glass */
+    border-color: rgba(16, 185, 129, 0.7);
+}
+#enable-2fa-btn[data-status="off"]:hover {
+    background: rgba(16, 185, 129, 0.6);
+    box-shadow: 0 4px 15px rgba(16, 185, 129, 0.3);
+}
+
+/* حالة إلغاء التفعيل (الزر يعرض "إلغاء التفعيل") - أحمر زجاجي */
+#enable-2fa-btn[data-status="on"] {
+    background: rgba(239, 68, 68, 0.4); /* Red Glass */
+    border-color: rgba(239, 68, 68, 0.7);
+}
+#enable-2fa-btn[data-status="on"]:hover {
+    background: rgba(239, 68, 68, 0.6);
+    box-shadow: 0 4px 15px rgba(239, 68, 68, 0.3);
+}
+
+/* تصميم الرسائل الزجاجي */
+.toast-message {
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+.toast-message.success { background: rgba(16, 185, 129, 0.6); }
+.toast-message.error { background: rgba(239, 68, 68, 0.6); }
+.toast-message.info { background: rgba(59, 130, 246, 0.6); }
+/* END: 2FA Button & Toast Style Fix V12.0 */
