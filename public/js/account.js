@@ -1797,7 +1797,7 @@ function handleImageError(img) {
         displayDefaultAvatar(container);
     }
 }
-
+window.handleImageError = handleImageError;
 // تحديث دالة updateDisplayFields الموجودة لتشمل تحميل الصورة
 // ابحث عن الدالة الموجودة واستبدلها بهذه النسخة المحدثة:
 const originalUpdateDisplayFields = updateDisplayFields;
