@@ -145,7 +145,6 @@ We welcome all contributions and suggestions!
 - **Theming:** Try modifying the CSS `:root` variables to change the entire color theme instantly.
 
 ---
-
 ## 👨‍💻 Project Information
 
 - **Developer:** husseinabdelkhalek
@@ -158,12 +157,11 @@ We welcome all contributions and suggestions!
 ## 📞 Support & Contact
 
 If you have questions or need help:
-- [Open an Issue]([[https://github.com/husseinabdelkhalek/controlex-web](https://github.com/husseinabdelkhalek/controlex-web
-)](https://github.com/husseinabdelkhalek/controlex-web
-))
-- Visit the Live Demo
+- [Open an Issue](https://github.com/husseinabdelkhalek/controlex-web/issues)
+- Visit the [Live Demo](https://male-cindy-controlex1-bd3de383.koyeb.app/)
 
 **⭐️ Show Your Support**
+
 If you find **ControlEx** helpful or inspiring, please give it a star ⭐️!
 
 Your support helps the project grow. Thank you! 🙏
