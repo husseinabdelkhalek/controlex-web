@@ -727,7 +727,9 @@ function validateWidgetData(data) {
     function createWidgetListItem(widget, index) {
         const item = document.createElement('div');
         item.className = 'configured-item';
-        item.setAttribute('data-widget-id', widget._id);
+        // دعم Firebase (id) و MongoDB (_id)
+        const widgetId = widget.id || widget._id;
+        item.setAttribute('data-widget-id', widgetId);
         
         const typeLabels = {
             'toggle': 'مفتاح تشغيل/إيقاف',
@@ -758,11 +760,11 @@ function validateWidgetData(data) {
                 </div>
             </div>
             <div class="configured-item-actions">
-                <button class="btn-edit" onclick="editWidget('${widget._id}')" title="تعديل الأداة">
+                <button class="btn-edit" onclick="editWidget('${widget.id || widget._id}')" title="تعديل الأداة">
                     <i class="fas fa-edit" aria-hidden="true"></i>
                     تعديل
                 </button>
-                <button class="btn-delete" onclick="deleteWidget('${widget._id}')" title="حذف الأداة">
+                <button class="btn-delete" onclick="deleteWidget('${widget.id || widget._id}')" title="حذف الأداة">
                     <i class="fas fa-trash" aria-hidden="true"></i>
                     حذف
                 </button>
@@ -784,9 +786,10 @@ function validateWidgetData(data) {
     
     // ==================== حذف الأدوات ==================== 
     window.deleteWidget = async function(widgetId) {
-        const widget = configuredWidgets.find(w => w._id === widgetId);
+        // البحث بـ id (Firebase) أو _id (MongoDB) لضمان التوافق
+        const widget = configuredWidgets.find(w => (w.id === widgetId || w._id === widgetId));
         if (!widget) {
-            console.error('Widget not found');
+            console.error('❌ Widget not found:', widgetId);
             return;
         }
         
@@ -815,9 +818,10 @@ function validateWidgetData(data) {
     
     // ==================== تعديل الأدوات ==================== 
     window.editWidget = function(widgetId) {
-        const widget = configuredWidgets.find(w => w._id === widgetId);
+        // البحث بـ id (Firebase) أو _id (MongoDB) لضمان التوافق
+        const widget = configuredWidgets.find(w => (w.id === widgetId || w._id === widgetId));
         if (!widget) {
-            console.error('Widget not found');
+            console.error('❌ Widget not found:', widgetId);
             return;
         }
         
@@ -865,10 +869,11 @@ function validateWidgetData(data) {
             'joystick-stop': widget.joystickCommands?.stopCommand || '',
             'joystick-diagonal': widget.joystickCommands?.diagonalCommands ? 'on' : ''
         };
-        // حفظ معرف الأداة في النموذج (للتعديل)
+        // حفظ معرف الأداة في النموذج (للتعديل) - دعم Firebase (id) و MongoDB (_id)
         const widgetForm = document.getElementById('widget-form');
         if (widgetForm) {
-            widgetForm.setAttribute('data-edit-id', widget._id);
+            const widgetId = widget.id || widget._id;
+            widgetForm.setAttribute('data-edit-id', widgetId);
         }
         Object.entries(fields).forEach(([fieldId, value]) => {
             const field = document.getElementById(fieldId);

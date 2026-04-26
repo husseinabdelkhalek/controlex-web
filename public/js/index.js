@@ -839,7 +839,8 @@ window.closeSupportModal = closeSupportModal;
                 const formData = new FormData(e.target);
                 const loginData = {
                     email: formData.get('email')?.trim(),
-                    password: formData.get('password')
+                    password: formData.get('password'),
+                    deviceInfo: getDeviceInfo()
                 };
                 
                 // التحقق من صحة البيانات
@@ -880,11 +881,36 @@ window.closeSupportModal = closeSupportModal;
                         }
                         // *** END: NEW 2FA LOGIC ***
                     } else {
-                        throw new Error(data.msg || 'بيانات تسجيل الدخول غير صحيحة');
+                        throw data;
                     }
                 } catch (err) {
                     console.error('خطأ في تسجيل الدخول:', err);
-                    showMessage(err.message || 'حدث خطأ في تسجيل الدخول', 'error');
+                    if (err.blocked) {
+                        let contactHTML = '';
+                        if (err.adminContact) {
+                            contactHTML = `<div style="margin-top: 10px; font-size: 0.9em;">للتواصل: `;
+                            if (err.adminContact.whatsapp) {
+                                let waLink = err.adminContact.whatsapp.includes('http') ? err.adminContact.whatsapp : 'https://wa.me/' + err.adminContact.whatsapp.replace(/[^0-9]/g, '');
+                                contactHTML += `<a href="${waLink}" target="_blank" style="color:#25D366; text-decoration:none;"><i class="fab fa-whatsapp"></i> واتساب</a> `;
+                            }
+                            if (err.adminContact.email) {
+                                contactHTML += ` &nbsp;|&nbsp; <a href="mailto:${err.adminContact.email}" style="color:#EA4335; text-decoration:none;"><i class="fas fa-envelope"></i> تعليق/إيميل</a>`;
+                            }
+                            contactHTML += `</div>`;
+                        }
+                        
+                        // تخصيص عرض الرسالة لتشمل HTML
+                        const messageDiv = document.getElementById('form-message') || getOrCreateMessageDiv('form-message');
+                        messageDiv.innerHTML = `<i class="fas fa-ban" style="margin-left: 8px;"></i> <div>${err.msg || 'تم إيقاف حسابك'} ${contactHTML}</div>`;
+                        messageDiv.className = `form-message error show`;
+                        
+                        setTimeout(() => {
+                            messageDiv.classList.remove('show');
+                            setTimeout(() => { messageDiv.innerHTML = ''; messageDiv.className = 'form-message'; }, 300);
+                        }, 10000); // 10 ثواني للرسائل الطويلة
+                    } else {
+                        showMessage(err.msg || err.message || 'حدث خطأ في تسجيل الدخول', 'error');
+                    }
                 } finally {
                     setLoading(false);
                 }
@@ -1404,7 +1430,10 @@ window.closeSupportModal = closeSupportModal;
     
     function displayMessage(messageDiv, message, type) {
         if (messageDiv) {
-            messageDiv.textContent = message;
+            // Check if it already has custom HTML injected before overriding
+            if (!messageDiv.innerHTML.includes('<a') && !messageDiv.innerHTML.includes('<i class="fas fa-ban"')) {
+                messageDiv.textContent = message;
+            }
             messageDiv.className = `form-message ${type} show`;
             
             const duration = type === 'error' ? 7000 : 5000;

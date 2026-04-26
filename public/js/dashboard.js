@@ -108,60 +108,25 @@
     const isMobile = window.innerWidth <= 768;
     
     gridStack = GridStack.init({
+      column: isMobile ? 6 : 12, // 6 columns on mobile for proportion (so width 3 = 50% width)
       cellHeight: isMobile ? 100 : 120,
       verticalMargin: isMobile ? 10 : 20,
       horizontalMargin: isMobile ? 10 : 20,
       animate: true,
       float: false,
       removable: false,
+      disableOneColumnMode: true, // Disable 1-column lock so multi-column widths work
       // تحسينات للموبايل
       resizable: {
-        handles: isMobile ? 'se, sw' : 'se, sw, ne, nw',
-        // تحسين الأداء
-        autoHide: false,
-        start: function(event, ui) {
-          // منع التمرير أثناء التغيير
-          if (isMobile) {
-            document.body.classList.add('dragging');
-          }
-        },
-        stop: function(event, ui) {
-          if (isMobile) {
-            document.body.classList.remove('dragging');
-          }
-        }
+        handles: isMobile ? 'se, sw' : 'se, sw, ne, nw', // Native big corner handles handle both W and H
+        autoHide: true
       },
       draggable: {
         handle: '.widget-header',
         appendTo: 'body',
-        scroll: false, // تحسين الأداء
-        // تحسينات للموبايل
-        start: function(event, ui) {
-          if (isMobile) {
-            document.body.classList.add('dragging');
-            // إضافة GPU acceleration
-            ui.helper.css({
-              'transform': 'translate3d(0, 0, 0)',
-              'will-change': 'transform'
-            });
-          }
-        },
-        drag: function(event, ui) {
-          // تحسين سلاسة الحركة
-          if (isMobile) {
-            requestAnimationFrame(() => {
-              // تحديث موضع العنصر
-            });
-          }
-        },
-        stop: function(event, ui) {
-          if (isMobile) {
-            document.body.classList.remove('dragging');
-            ui.helper.css({
-              'will-change': 'auto'
-            });
-          }
-        }
+        scroll: true, 
+        scrollSensitivity: 50,
+        scrollSpeed: 20
       }
     }, gridContainer);
 
@@ -217,11 +182,11 @@
                 updateConnectionStatus(true);
                 socketReconnectAttempts = 0;
                 if (currentUser) {
-                    socket.emit('join-user-room', currentUser._id);
+                    socket.emit('join-user-room', currentUser.id || currentUser._id);
                 }
                 // إعادة اشتراك في جميع الحساسات
                 widgets.filter(w => w.type === 'sensor').forEach(w => {
-                    socket.emit('subscribe-sensor', w._id);
+                    socket.emit('subscribe-sensor', w.id || w._id);
                 });
             });
 
@@ -262,7 +227,7 @@
 
             socket.on('widget-deleted', (data) => {
                 console.log('📡 تم حذف ويدجت:', data);
-                widgets = widgets.filter(w => w._id !== data.widgetId);
+                widgets = widgets.filter(w => (w.id || w._id) !== data.widgetId);
                 removeWidgetFromGrid(data.widgetId);
                 updateStats();
                 stopWidgetMonitoring(data.widgetId);
@@ -295,6 +260,16 @@
                             appendTerminalMessage(data.widgetId, msg.message, msg.type, msg.timestamp);
                         });
                     }
+                }
+            });
+
+            socket.on('new-notification', (data) => {
+                console.log('🔔 إشعار جديد:', data);
+                // Optional: show via a custom toast
+                if (window.showToast) {
+                    window.showToast(data.title, 'info');
+                } else {
+                    alert(`${data.title}\n${data.message}`);
                 }
             });
 
@@ -359,20 +334,23 @@
 
     // === مراقبة الحساسات (جلب البيانات كل ثانية) ===
     function startSensorMonitoring(widget) {
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
         // إيقاف المراقبة السابقة إن وجدت
-        if (sensorIntervals.has(widget._id)) {
-            clearInterval(sensorIntervals.get(widget._id));
+        if (sensorIntervals.has(widgetId)) {
+            clearInterval(sensorIntervals.get(widgetId));
         }
 
         // جلب البيانات الأولى
-        fetchSensorData(widget._id);
+        fetchSensorData(widgetId);
 
         // بدء المراقبة المستمرة
         const intervalId = setInterval(() => {
-            fetchSensorData(widget._id);
+            fetchSensorData(widgetId);
         }, 1000); // كل ثانية
 
-        sensorIntervals.set(widget._id, intervalId);
+        sensorIntervals.set(widgetId, intervalId);
         console.log(`🔄 بدء مراقبة الحساس: ${widget.name}`);
     }
 
@@ -396,7 +374,7 @@
 
     // === تحديث بيانات الحساس ===
     function updateSensorData(widgetId, data) {
-        const widget = widgets.find(w => w._id === widgetId);
+        const widget = widgets.find(w => (w.id || w._id) === widgetId);
         if (!widget) return;
 
         // تحديث حالة الويدجت
@@ -413,19 +391,22 @@
 
     // === مراقبة الترمينال (جلب الرسائل كل ثانية) ===
     function startTerminalMonitoring(widget) {
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
         // إيقاف المراقبة السابقة إن وجدت
-        if (terminalIntervals.has(widget._id)) {
-            clearInterval(terminalIntervals.get(widget._id));
+        if (terminalIntervals.has(widgetId)) {
+            clearInterval(terminalIntervals.get(widgetId));
         }
 
         // جلب الرسائل الأولى
-        loadTerminalMessages(widget._id, 50);
+        loadTerminalMessages(widgetId, 50);
 
         const intervalId = setInterval(() => {
-            loadTerminalMessages(widget._id, 50, true);
+            loadTerminalMessages(widgetId, 50, true);
         }, 5000); // كل 5 ثواني
         
-        terminalIntervals.set(widget._id, intervalId);
+        terminalIntervals.set(widgetId, intervalId);
         console.log(`🔄 بدء مراقبة الترمينال: ${widget.name}`);
     }
 
@@ -506,8 +487,10 @@
         const y = Math.floor((index * 3) / 12) * 3;
         const w = getWidgetWidth(widget.type);
         const h = getWidgetHeight(widget.type);
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB) بناءً على ما هو متاح
+        const widgetId = widget.id || widget._id;
 
-        gridStack.addWidget(widgetElement, { x, y, w, h, id: widget._id });
+        gridStack.addWidget(widgetElement, { x, y, w, h, id: widgetId });
         attachWidgetEvents(widgetElement, widget);
     }
 
@@ -515,7 +498,11 @@
     function createWidgetElement(widget) {
         const widgetElement = document.createElement('div');
         widgetElement.className = `grid-stack-item widget-item widget-${widget.type}`;
-        widgetElement.dataset.widgetId = widget._id;
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB) بناءً على ما هو متاح
+        const widgetId = widget.id || widget._id;
+        widgetElement.dataset.widgetId = widgetId;
+        widgetElement.setAttribute('gs-id', widgetId);
+        widgetElement.setAttribute('data-id', widgetId);
 
         const content = document.createElement('div');
         content.className = 'grid-stack-item-content widget-content';
@@ -637,7 +624,7 @@
         case 'terminal':
              bodyHTML = `
                 <div class="terminal-display">
-                    <div class="terminal-output" id="terminal-${widget._id}">
+                    <div class="terminal-output" id="terminal-${widget.id || widget._id}">
                         <div class="terminal-line"> جاهز للأوامر...</div>
                     </div>
                     <div class="terminal-input">
@@ -726,7 +713,7 @@
                                 'x-auth-token': token
                             },
                             body: JSON.stringify({
-                                widgetId: widget._id,
+                                widgetId: widget.id || widget._id,
                                 value: command
                             })
                         });
@@ -995,7 +982,9 @@ const getDirection = (dx, dy) => {
 
     // === معالجة أحداث الويدجت ===
     async function handleToggleAction(widget) {
-        const widgetElement = document.querySelector(`[data-widget-id="${widget._id}"]`);
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        const widgetElement = document.querySelector(`[data-widget-id="${widgetId}"]`);
         if (!widgetElement) return;
 
         const toggleBtn = widgetElement.querySelector('.toggle-btn');
@@ -1021,7 +1010,7 @@ const getDirection = (dx, dy) => {
             const response = await fetch('/api/command/send', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json', 'x-auth-token': token },
-                body: JSON.stringify({ widgetId: widget._id, value: 'TOGGLE' })
+                body: JSON.stringify({ widgetId: widgetId, value: 'TOGGLE' })
             });
 
             if (!response.ok) {
@@ -1041,6 +1030,9 @@ const getDirection = (dx, dy) => {
     }
 
     async function handlePushAction(widget) {
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
         try {
             const response = await fetch('/api/command/send', {
                 method: 'POST',
@@ -1049,7 +1041,7 @@ const getDirection = (dx, dy) => {
                     'x-auth-token': token
                 },
                 body: JSON.stringify({
-                    widgetId: widget._id,
+                    widgetId: widgetId,
                     value: widget.configuration.onCommand
                 })
             });
@@ -1067,10 +1059,13 @@ const getDirection = (dx, dy) => {
     }
 
     async function handleDeleteAction(widget) {
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
         if (!confirm(`هل تريد حذف الأداة "${widget.name}"؟`)) return;
 
         try {
-            const response = await fetch(`/api/widgets/${widget._id}`, {
+            const response = await fetch(`/api/widgets/${widgetId}`, {
                 method: 'DELETE',
                 headers: { 'x-auth-token': token }
             });
@@ -1078,7 +1073,7 @@ const getDirection = (dx, dy) => {
             if (response.ok) {
                 showMessage('تم حذف الأداة بنجاح', 'success');
                 console.log('✅ تم حذف الويدجت');
-                stopWidgetMonitoring(widget._id);
+                stopWidgetMonitoring(widgetId);
             } else {
                 throw new Error('فشل في حذف الأداة');
             }
@@ -1118,6 +1113,9 @@ const getDirection = (dx, dy) => {
     }
 
     async function handleTerminalSend(widget, widgetElement) {
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
         const inputElement = widgetElement.querySelector('.terminal-cmd');
         const command = inputElement?.value?.trim();
         if (!command) return;
@@ -1130,7 +1128,7 @@ const getDirection = (dx, dy) => {
                     'x-auth-token': token
                 },
                 body: JSON.stringify({
-                    widgetId: widget._id,
+                    widgetId: widgetId,
                     value: command
                 })
             });
@@ -1147,16 +1145,22 @@ const getDirection = (dx, dy) => {
     }
 
     function handleTerminalClear(widget) {
-        const outputElement = document.querySelector(`#terminal-${widget._id}`);
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
+        const outputElement = document.querySelector(`#terminal-${widgetId}`);
         if (outputElement) {
             outputElement.innerHTML = '<div class="terminal-line">جاهز للأوامر...</div>';
-            terminalHistory.set(widget._id, []);
+            terminalHistory.set(widgetId, []);
         }
     }
 
     async function handleTerminalRefresh(widget) {
+        // استخدم widget.id (Firebase) أو widget._id (MongoDB)
+        const widgetId = widget.id || widget._id;
+        
         showMessage('جاري تحديث الترمنال...', 'info');
-        await loadTerminalMessages(widget._id, 50);
+        await loadTerminalMessages(widgetId, 50);
     }
 
     // === تحديث حالة الويدجت ===
@@ -1164,7 +1168,7 @@ const getDirection = (dx, dy) => {
         const widgetElement = document.querySelector(`[data-widget-id="${widgetId}"]`);
         if (!widgetElement) return;
 
-        const widget = widgets.find(w => w._id === widgetId);
+        const widget = widgets.find(w => (w.id || w._id) === widgetId);
         if (!widget) return;
 
         widget.state = { ...widget.state, ...data };
@@ -1249,9 +1253,16 @@ async function saveWidgetPositions() {
         // جمع معلومات الموضع لكل أداة
         gridItems.forEach(item => {
             const node = item.gridstackNode;
-            const widgetId = item.getAttribute('data-widget-id') || node.id;
+            // جرب قراءة الـ ID من عدة مصادر ممكنة
+            const widgetId = 
+                item.getAttribute('data-widget-id') || 
+                item.getAttribute('data-id') || 
+                item.getAttribute('gs-id') || 
+                item.dataset?.widgetId || 
+                node?.id;
             
-            if (widgetId && node) {
+            if (widgetId && node && widgetId !== 'undefined') {
+                console.log(`📍 الأداة: ${widgetId}, الموضع: (${node.x}, ${node.y}), الحجم: ${node.w}x${node.h}`);
                 widgetPositions.push({
                     widgetId: widgetId,
                     x: node.x || 0,
@@ -1259,6 +1270,8 @@ async function saveWidgetPositions() {
                     w: node.w || 1,
                     h: node.h || 1
                 });
+            } else {
+                console.warn('⚠️ تحذير: لم يتم العثور على ID للأداة', item);
             }
         });
 
@@ -1305,7 +1318,7 @@ async function saveWidgetPositions() {
             
             // تحديث الأدوات المحلية
             widgetPositions.forEach(pos => {
-                const widget = widgets.find(w => w._id === pos.widgetId);
+                const widget = widgets.find(w => (w.id || w._id) === pos.widgetId);
                 if (widget) {
                     widget.gs = {
                         x: pos.x,
@@ -1339,11 +1352,13 @@ function addWidgetToGrid(widget, index = 0) {
     
     // استخدام المواضع المحفوظة إن وجدت، وإلا استخدام مواضع افتراضية
     let widgetOptions;
+    // استخدم widget.id (Firebase) أو widget._id (MongoDB) بناءً على ما هو متاح
+    const widgetId = widget.id || widget._id;
     
     if (widget.gs && typeof widget.gs.x !== 'undefined') {
         // استخدام الموضع المحفوظ
         widgetOptions = {
-            id: widget._id,
+            id: widgetId,
             x: widget.gs.x,
             y: widget.gs.y,
             w: widget.gs.w || getWidgetWidth(widget.type),
@@ -1356,7 +1371,7 @@ function addWidgetToGrid(widget, index = 0) {
         const isTablet = window.innerWidth > 768 && window.innerWidth <= 1024;
         
         widgetOptions = {
-            id: widget._id,
+            id: widgetId,
             x: isMobile ? 0 : (index % (isTablet ? 2 : 3)) * getWidgetWidth(widget.type),
             y: Math.floor(index / (isMobile ? 1 : (isTablet ? 2 : 3))) * getWidgetHeight(widget.type),
             w: getWidgetWidth(widget.type),
@@ -1864,12 +1879,16 @@ function setupEditMode() {
     // متغير للتحكم في الحالة
     isEditMode = false;
 
+    const debouncedSavePositions = debounce(() => {
+        saveWidgetPositions();
+    }, 1500);
+
     gridStack.on('change', (event, items) => {
         // فقط في وضع التعديل وعند وجود تغييرات
         if (isEditMode && items && items.length > 0) {
             console.log('📐 تم تغيير مواضع الأدوات:', items);
-            // حفظ تلقائي للمواضع (اختياري)
-             saveWidgetPositionsAuto();
+            // حفظ تلقائي للمواضع (بالتأخير لمنع استهلاك حصة قاعدة البيانات)
+             debouncedSavePositions();
         }
     });
 

@@ -1,7 +1,7 @@
 // بدء تشغيل خادم لوحة التحكم الذكية - النسخة المحدثة...
 require('dotenv').config();
 const express = require('express');
-const mongoose = require('mongoose');
+const admin = require('firebase-admin');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const cors = require('cors');
@@ -12,14 +12,46 @@ const nodemailer = require('nodemailer');
 const http = require('http');
 const socketIo = require('socket.io');
 const passport = require('passport');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 const GoogleStrategy = require('passport-google-oauth20').Strategy;
 const session = require('express-session');
+const { FirestoreStore } = require('@google-cloud/connect-firestore');
+const serviceAccount = require('./firebase-adminsdk.json');
 
 // تأكد من أن مخرجات console.log تعرض الأحرف العربية بشكل صحيح
 process.stdout.setEncoding('utf8');
 
+// تهيئة Firebase Admin SDK
+admin.initializeApp({
+  credential: admin.credential.cert(serviceAccount),
+  databaseURL: process.env.FIREBASE_DATABASE_URL || ''
+});
+
+const db = admin.firestore();
+// ✅ تفعيل خاصية ignoreUndefinedProperties لتجنب أخطاء القيم undefined
+db.settings({ ignoreUndefinedProperties: true });
+
+const Users = db.collection('Users');
+const Widgets = db.collection('Widgets');
+const TerminalMessages = db.collection('TerminalMessages');
+const Sessions = db.collection('Sessions');
+const ResetCodes = db.collection('ResetCodes');
+const Notifications = db.collection('Notifications');
+const ClientLogs = db.collection('ClientLogs');
+const BannedDevices = db.collection('BannedDevices');
+const SystemStats = db.collection('SystemStats');
+
+console.log('✅ تم تهيئة Firebase Admin SDK بنجاح');
+
 const app = express();
 app.enable('trust proxy'); 
+
+// ✅ تفعيل حماية Helmet (رؤوس HTTP آمنة)
+app.use(helmet({
+  contentSecurityPolicy: false, // سنترك إعدادات CSP اليدوية كما هي
+}));
+
 const server = http.createServer(app);
 const io = socketIo(server, {
   cors: {
@@ -61,12 +93,34 @@ app.use(cors({
   allowedHeaders: ['Content-Type', 'x-auth-token', 'Authorization'] // السماح برؤوس معينة
 }));
 
+// START: SECURITY MIDDLEWARES
+// تحديد عدد الطلبات المسموح بها للمسارات الحساسة (Login/Register)
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 دقيقة
+  max: 20, // أقصى عدد طلبات من نفس الـ IP
+  message: { msg: 'طلبات كثيرة جداً، يرجى المحاولة بعد 15 دقيقة.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// تطبيق الـ limiter على مسارات المصادقة فقط
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth/forgot-password', authLimiter);
+
 // START: PASSPORT & SESSION CONFIG
 app.use(session({
-    secret: process.env.SESSION_SECRET || 'a_very_secret_key',
+    store: new FirestoreStore({
+        dataset: db,
+        kind: 'Sessions' // اسم الكولكشن اللي هيتحط فيها الجلسات
+    }),
+    secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: false,
-    cookie: { secure: process.env.NODE_ENV === 'production' }
+    cookie: { 
+        secure: process.env.NODE_ENV === 'production',
+        maxAge: 24 * 60 * 60 * 1000 
+    }
 }));
 
 app.use(passport.initialize());
@@ -79,36 +133,68 @@ passport.use(new GoogleStrategy({
     scope: ['profile', 'email']
 }, async (accessToken, refreshToken, profile, done) => {
     try {
-        let user = await User.findOne({ googleId: profile.id });
+        // البحث بناءً على googleId
+        const googleUserSnapshot = await Users.where('googleId', '==', profile.id).limit(1).get();
+        let user = null;
         
-        if (user) {
+        if (!googleUserSnapshot.empty) {
+            user = googleUserSnapshot.docs[0];
             // تحديث صورة المستخدم الموجود
-            user.googleProfilePicture = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
-            await user.save();
-            return done(null, user);
+            await Users.doc(user.id).update({
+                googleProfilePicture: profile.photos && profile.photos[0] ? profile.photos[0].value : null
+            });
+            return done(null, { id: user.id, ...user.data() });
         }
 
-        user = await User.findOne({ email: profile.emails[0].value });
+        // البحث بناءً على البريد الإلكتروني
+        const emailUserSnapshot = await Users.where('email', '==', profile.emails[0].value).limit(1).get();
         
-        if (user) {
-            user.googleId = profile.id;
-            user.googleProfilePicture = profile.photos && profile.photos[0] ? profile.photos[0].value : null;
-            await user.save();
-            return done(null, user);
+        if (!emailUserSnapshot.empty) {
+            user = emailUserSnapshot.docs[0];
+            // ربط حساب جوجل بالحساب الموجود
+            await Users.doc(user.id).update({
+                googleId: profile.id,
+                googleProfilePicture: profile.photos && profile.photos[0] ? profile.photos[0].value : null
+            });
+            return done(null, { id: user.id, ...user.data() });
         }
 
-        // إنشاء مستخدم جديد مع الصورة
-        const newUser = new User({
+        // إنشاء مستخدم جديد
+        const newUserRef = Users.doc();
+        const newUserData = {
+            id: newUserRef.id,
             googleId: profile.id,
             username: profile.displayName,
             email: profile.emails[0].value,
             googleEmail: profile.emails[0].value,
-            googleProfilePicture: profile.photos && profile.photos[0] ? profile.photos[0].value : null
-        });
-
-        await newUser.save();
-        return done(null, newUser);
+            googleProfilePicture: profile.photos && profile.photos[0] ? profile.photos[0].value : null,
+            password: '',
+            adafruitUsername: '',
+            adafruitApiKey: '',
+            role: profile.emails[0].value.toLowerCase() === 'hussianabdk577@gmail.com' ? 'admin' : 'user',
+            status: 'active',
+            adminMessage: { show: true, text: 'حسابك معلق حالياً. يرجى التواصل مع المسؤول.', email: 'hussianabdk577@gmail.com', whatsapp: '' },
+            security: {
+                lastLogin: admin.firestore.Timestamp.now(),
+                loginAttempts: 0,
+                twoFactorEnabled: false
+            },
+            preferences: {
+                theme: 'dark',
+                privacy: {
+                    allowDataCollection: false,
+                    emailNotifications: true,
+                    securityAlerts: true
+                }
+            },
+            createdAt: admin.firestore.Timestamp.now(),
+            updatedAt: admin.firestore.Timestamp.now()
+        };
+        
+        await newUserRef.set(newUserData);
+        return done(null, newUserData);
     } catch (err) {
+        console.error('❌ خطأ في Google Strategy:', err);
         return done(err, null);
     }
 }));
@@ -119,165 +205,21 @@ passport.serializeUser((user, done) => {
 
 passport.deserializeUser(async (id, done) => {
     try {
-        const user = await User.findById(id);
-        done(null, user);
+        const userDoc = await Users.doc(id).get();
+        if (userDoc.exists) {
+            done(null, { id: userDoc.id, ...userDoc.data() });
+        } else {
+            done(null, null);
+        }
     } catch (err) {
+        console.error('❌ خطأ في deserializeUser:', err);
         done(err, null);
     }
 });
 // END: PASSPORT & SESSION CONFIG
 
-// اتصال MongoDB
-// الاتصال بقاعدة بيانات MongoDB باستخدام URI من متغيرات البيئة.
-mongoose.connect(process.env.MONGODB_URI, {
-  useNewUrlParser: true,
-  useUnifiedTopology: true,
-  maxPoolSize: 10, // الحد الأقصى لحجم تجمع الاتصال
-  serverSelectionTimeoutMS: 5000, // مهلة اكتشاف الخادم بعد 5 ثوانٍ
-  socketTimeoutMS: 45000 // مهلة مقبس بعد 45 ثانية
-})
-  .then(() => console.log('✅ تم الاتصال بقاعدة بيانات MongoDB بنجاح'))
-  .catch(err => {
-    console.error('❌ خطأ في الاتصال بقاعدة بيانات MongoDB:', err);
-    process.exit(1); // إنهاء العملية في حالة فشل الاتصال
-  });
-
-// المخططات والنماذج (Schemas & Models)
-
-// مخطط المستخدم (User Schema)
-const UserSchema = new mongoose.Schema({
-  username: { type: String, required: true, unique: true, trim: true },
-  password: { type: String, required: false },
-  email: { type: String, required: true, unique: true, lowercase: true, trim: true },
-  googleId: { type: String, unique: true, sparse: true },
-  googleEmail: { type: String, trim: true, lowercase: true, sparse: true },
-  googleProfilePicture: { type: String, trim: true, default: null }, // إضافة حقل جديد لتخزين بريد جوجل
-  adafruitUsername: { type: String, trim: true, default: '' },
-  adafruitApiKey: { type: String, trim: true, default: '' },
-  security: {
-    lastLogin: { type: Date, default: Date.now },
-    loginAttempts: { type: Number, default: 0 },
-    lockUntil: Date,
-    twoFactorEnabled: { type: Boolean, default: false },
-    twoFactorCode: String,
-    twoFactorCodeExpires: Date,
-    resetPasswordToken: String,
-    resetPasswordExpires: Date
-  },
-  preferences: {
-    theme: { type: String, default: 'dark' },
-    privacy: {
-      allowDataCollection: { type: Boolean, default: false },
-      emailNotifications: { type: Boolean, default: true },
-      securityAlerts: { type: Boolean, default: true }
-    }
-  }
-}, { timestamps: true }); // إضافة حقول createdAt و updatedAt تلقائياً
-
-const User = mongoose.model('User', UserSchema);
-// تحديث WidgetSchema في server.js لإضافة حقل المواضع
-const WidgetSchema = new mongoose.Schema({
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    name: { type: String, required: true, trim: true },
-    feedName: { type: String, required: true, trim: true },
-    type: { type: String, enum: ['toggle', 'push', 'sensor', 'terminal', 'slider', 'joystick'], default: 'toggle' },
-    icon: { type: String, default: 'fas fa-toggle-on' },
-    
-    gs: {
-        x: { type: Number, default: 0 },
-        y: { type: Number, default: 0 },
-        w: { type: Number, default: 1 },
-        h: { type: Number, default: 1 }
-    },
-    configuration: {
-        onCommand: { type: String, default: 'ON' },
-        offCommand: { type: String, default: 'OFF' },
-        unit: { type: String, default: '' },
-        min: { type: Number, default: 0 },
-        max: { type: Number, default: 100 },
-        // === START: Joystick Commands ===
-        upCommand: { type: String, trim: true },
-        downCommand: { type: String, trim: true },
-        leftCommand: { type: String, trim: true },
-        rightCommand: { type: String, trim: true },
-        upRightCommand: { type: String, trim: true },
-        upLeftCommand: { type: String, trim: true },
-        downRightCommand: { type: String, trim: true },
-        downLeftCommand: { type: String, trim: true },
-        // === END: Joystick Commands ===
-    },
-    
-    appearance: {
-        primaryColor: { type: String, default: '#8A2BE2' },
-        activeColor: { type: String, default: '#00e5ff' },
-        glowColor: { type: String, default: '#8A2BE2' }
-    },
-    state: {
-        isActive: { type: Boolean, default: false },
-        lastValue: mongoose.Schema.Types.Mixed,
-        lastUpdate: { type: Date, default: Date.now }
-    },
-    analytics: {
-        totalCommands: { type: Number, default: 0 },
-        successfulCommands: { type: Number, default: 0 }
-    }
-}, { timestamps: true });
-const Widget = mongoose.model('Widget', WidgetSchema);
-// ====== مخطط جديد لرسائل الترمنال (TerminalMessage Schema) ======
-const TerminalMessageSchema = new mongoose.Schema({
-  userId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
-    required: true
-  },
-  widgetId: { // ربط الرسالة بويدجت الترمنال المحدد
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Widget',
-    required: true
-  },
-  message: { // محتوى الرسالة
-    type: String,
-    required: true,
-    trim: true
-  },
-  type: { // نوع الرسالة: 'sent' (صادرة من المستخدم) أو 'received' (واردة من الجهاز)
-    type: String,
-    enum: ['sent', 'received'],
-    required: true
-  },
-  timestamp: { // وقت إرسال/استلام الرسالة
-    type: Date,
-    default: Date.now
-  }
-}, {
-  timestamps: true // تضيف createdAt و updatedAt تلقائيًا
-});
-
-const TerminalMessage = mongoose.model('TerminalMessage', TerminalMessageSchema);
-// مخطط الجلسة (Session Schema)
-const SessionSchema = new mongoose.Schema({
-  userId: { type: mongoose.Schema.Types.ObjectId, ref: 'User' },
-  token: String,
-  deviceInfo: {
-    browser: String,
-    ip: String,
-    userAgent: String
-  },
-  isActive: { type: Boolean, default: true },
-  lastActivity: { type: Date, default: Date.now },
-  expiresAt: { type: Date, default: () => new Date(Date.now() + 24 * 60 * 60 * 1000) } // انتهاء الصلاحية بعد 24 ساعة
-}, { timestamps: true });
-
-const Session = mongoose.model('Session', SessionSchema);
-
-// مخطط رمز إعادة التعيين (ResetCode Schema)
-const ResetCodeSchema = new mongoose.Schema({
-  email: { type: String, required: true, lowercase: true, trim: true },
-  code: { type: String, required: true },
-  createdAt: { type: Date, default: Date.now, expires: 600 } // تنتهي صلاحية الرمز بعد 10 دقائق (600 ثانية)
-});
-
-const ResetCode = mongoose.model('ResetCode', ResetCodeSchema);
+// Firestore Collections مهيأة بالفعل أعلاه
+// Users, Widgets, TerminalMessages, Sessions, ResetCodes
 
 // خدمة المصادقة (AuthService)
 const AuthService = {
@@ -302,22 +244,38 @@ const auth = async (req, res, next) => {
     if (!token) return res.status(401).json({ msg: 'لا يوجد رمز مصادقة، الوصول مرفوض.' });
 
     const decoded = AuthService.verifyJWT(token);
-    const user = await User.findById(decoded.id).select('-password'); // لا ترجع كلمة المرور
-    if (!user) return res.status(401).json({ msg: 'رمز مصادقة غير صالح.' });
+    const userDoc = await Users.doc(decoded.id).get();
+    
+    if (!userDoc.exists) return res.status(401).json({ msg: 'رمز مصادقة غير صالح.' });
+
+    const userData = { id: userDoc.id, ...userDoc.data() };
 
     // التحقق من وجود جلسة نشطة لهذا الرمز
-    // ملاحظة: سنتجاوز التحقق من الجلسة عند استخدام التوكن من الرابط لتسهيل عملية الربط
     if (!req.query.token) {
-        const session = await Session.findOne({ userId: user._id, token, isActive: true });
-        if (!session) {
+        const sessionSnapshot = await Sessions.where('userId', '==', userDoc.id)
+            .where('token', '==', token)
+            .where('isActive', '==', true)
+            .limit(1).get();
+            
+        if (sessionSnapshot.empty) {
           return res.status(401).json({ msg: 'الجلسة منتهية أو غير نشطة، يرجى تسجيل الدخول مرة أخرى.' });
         }
+        
         // تحديث وقت النشاط للجلسة
-        session.lastActivity = Date.now();
-        await session.save();
+        const sessionDoc = sessionSnapshot.docs[0];
+        const sessionData = sessionDoc.data();
+        
+        // التحقق من الحظر هنا
+        if (await isDeviceBanned(req.ip, sessionData.deviceInfo?.deviceId)) {
+             return res.status(403).json({ msg: 'هذا الجهاز أو الـ IP محظور.', blocked: true });
+        }
+
+        await Sessions.doc(sessionDoc.id).update({
+            lastActivity: admin.firestore.Timestamp.now()
+        });
     }
 
-    req.user = user; // إضافة معلومات المستخدم إلى كائن الطلب
+    req.user = userData; // إضافة معلومات المستخدم إلى كائن الطلب
     next(); // المتابعة إلى المسار التالي
   } catch (err) {
     console.error('خطأ في المصادقة:', err);
@@ -394,22 +352,35 @@ app.get('/auth/google/callback',
         // الحالة الأولى: المستخدم يقوم بربط حسابه (لأننا حفظنا ID في الجلسة)
         if (req.session.linkingUserId) {
             try {
-                const linkingUser = await User.findById(req.session.linkingUserId);
-                const googleProfileId = req.user.googleId; // هذا يأتي من ملف جوجل الشخصي
+                const linkingUserDoc = await Users.doc(req.session.linkingUserId).get();
+                
+                if (!linkingUserDoc.exists) {
+                    delete req.session.linkingUserId;
+                    return res.redirect('/account');
+                }
+
+                const linkingUser = linkingUserDoc.data();
+                const googleProfileId = req.user.id; // هذا يأتي من ملف جوجل الشخصي
 
                 // تحقق مما إذا كان حساب جوجل هذا مربوطًا بالفعل بحساب آخر
-                const googleAccountExists = await User.findOne({ googleId: googleProfileId });
-                if (googleAccountExists && googleAccountExists.id !== linkingUser.id) {
-                    // مسح ID من الجلسة لمنع المحاولات المستقبلية الخاطئة
-                    delete req.session.linkingUserId;
-                    // أعد توجيه المستخدم برسالة خطأ
-                    return res.send(`<script>alert('هذا الحساب في جوجل مربوط بالفعل بحساب آخر.'); window.location.href = '/account';</script>`);
+                const googleAccountSnapshot = await Users.where('googleId', '==', googleProfileId).limit(1).get();
+                
+                if (!googleAccountSnapshot.empty) {
+                    const googleAccountDoc = googleAccountSnapshot.docs[0];
+                    if (googleAccountDoc.id !== linkingUserDoc.id) {
+                        // مسح ID من الجلسة لمنع المحاولات المستقبلية الخاطئة
+                        delete req.session.linkingUserId;
+                        // أعد توجيه المستخدم برسالة خطأ
+                        return res.send(`<script>alert('هذا الحساب في جوجل مربوط بالفعل بحساب آخر.'); window.location.href = '/account';</script>`);
+                    }
                 }
 
                 // ربط الحساب وتخزين الإيميل
-                linkingUser.googleId = googleProfileId;
-                linkingUser.googleEmail = req.user.emails[0].value; // حفظ إيميل جوجل
-                await linkingUser.save();
+                await Users.doc(linkingUserDoc.id).update({
+                    googleId: googleProfileId,
+                    googleEmail: req.user.email,
+                    googleProfilePicture: req.user.googleProfilePicture
+                });
 
                 // مسح ID من الجلسة بعد إتمام العملية بنجاح
                 delete req.session.linkingUserId;
@@ -425,14 +396,24 @@ app.get('/auth/google/callback',
 
         // الحالة الثانية: تسجيل دخول أو تسجيل حساب جديد (السلوك القديم)
         const user = req.user;
-        const token = AuthService.generateJWT({ id: user._id });
+        if (user.status === 'blocked' || user.status === 'suspended') {
+             return res.send(`<script>
+                 alert('${user.adminMessage?.show ? user.adminMessage.text : "تم إيقاف حسابك."}\\nللإستفسار قم بمراسلة الإدارة.');
+                 window.location.href = '/';
+             </script>`);
+        }
+        const token = AuthService.generateJWT({ id: user.id });
 
-        const session = new Session({
-            userId: user._id,
+        const newSessionRef = Sessions.doc();
+        await newSessionRef.set({
+            userId: user.id,
             token,
-            deviceInfo: { userAgent: req.get('User-Agent'), ip: req.ip }
+            deviceInfo: { userAgent: req.get('User-Agent'), ip: req.ip },
+            isActive: true,
+            lastActivity: admin.firestore.Timestamp.now(),
+            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+            createdAt: admin.firestore.Timestamp.now()
         });
-        await session.save();
 
         if (!user.password) {
             res.send(`<script>localStorage.setItem('token', '${token}'); window.location.href = '/?complete_signup=true';</script>`);
@@ -453,12 +434,13 @@ app.post('/api/auth/complete-google-signup', auth, async (req, res) => {
             return res.status(400).json({ msg: 'كلمة المرور يجب أن تكون 6 أحرف على الأقل.' });
         }
 
-        const user = await User.findById(req.user.id);
-        user.password = await AuthService.hashPassword(password);
-        user.adafruitUsername = adafruitUsername || user.adafruitUsername || '';
-        user.adafruitApiKey = adafruitApiKey || user.adafruitApiKey || '';
+        const hashed = await AuthService.hashPassword(password);
         
-        await user.save();
+        await Users.doc(req.user.id).update({
+            password: hashed,
+            adafruitUsername: adafruitUsername || req.user.adafruitUsername || '',
+            adafruitApiKey: adafruitApiKey || req.user.adafruitApiKey || ''
+        });
 
         res.json({ msg: 'تم إكمال التسجيل بنجاح.' });
     } catch (err) {
@@ -469,7 +451,8 @@ app.post('/api/auth/complete-google-signup', auth, async (req, res) => {
 app.post('/api/user/unlink-google', auth, async (req, res) => {
     try {
         const { password } = req.body;
-        const user = await User.findById(req.user.id);
+        const userDoc = await Users.doc(req.user.id).get();
+        const user = { id: userDoc.id, ...userDoc.data() };
 
         if (!user.password) {
             return res.status(400).json({ msg: 'لا يمكنك فك الربط لأنه لا توجد كلمة مرور محلية. يرجى تعيين واحدة أولاً.' });
@@ -481,18 +464,185 @@ app.post('/api/user/unlink-google', auth, async (req, res) => {
         }
 
         // حذف كل من معرف جوجل وبريد جوجل
-        user.googleId = undefined;
-        user.googleEmail = undefined;
-        await user.save();
+        await Users.doc(user.id).update({
+            googleId: '',
+            googleEmail: '',
+            googleProfilePicture: ''
+        });
         res.json({ msg: 'تم فك ربط حساب جوجل بنجاح.' });
     } catch (err) {
         res.status(500).json({ msg: 'خطأ في الخادم' });
     }
 });
 // END: GOOGLE SIGNUP COMPLETION & UNLINK
+
+// ✅ NEW: Mobile Google Sign-In via Firebase ID Token
+// Flutter app sends the Firebase ID Token → server verifies it → returns JWT
+app.post('/api/auth/google/mobile', async (req, res) => {
+    try {
+        const { idToken } = req.body;
+
+        if (!idToken) {
+            return res.status(400).json({ msg: 'Firebase ID Token مطلوب.' });
+        }
+
+        // Verify the Firebase ID Token using Firebase Admin SDK
+        let decodedToken;
+        try {
+            decodedToken = await admin.auth().verifyIdToken(idToken);
+        } catch (verifyErr) {
+            console.error('❌ Firebase token verification failed:', verifyErr.message);
+            return res.status(401).json({ msg: 'رمز المصادقة من جوجل غير صالح.' });
+        }
+
+        const { uid, email, name, picture } = decodedToken;
+
+        if (!email) {
+            return res.status(400).json({ msg: 'لم يتم الحصول على البريد الإلكتروني من جوجل.' });
+        }
+
+        // Check if user exists by googleId
+        let userDoc = null;
+        const googleSnapshot = await Users.where('googleId', '==', uid).limit(1).get();
+
+        if (!googleSnapshot.empty) {
+            // User found by Google ID — update and login
+            userDoc = googleSnapshot.docs[0];
+            await Users.doc(userDoc.id).update({
+                googleProfilePicture: picture || '',
+                'security.lastLogin': admin.firestore.Timestamp.now()
+            });
+        } else {
+            // Check by email
+            const emailSnapshot = await Users.where('email', '==', email.toLowerCase()).limit(1).get();
+
+            if (!emailSnapshot.empty) {
+                // Existing account with same email — link Google ID
+                userDoc = emailSnapshot.docs[0];
+                await Users.doc(userDoc.id).update({
+                    googleId: uid,
+                    googleEmail: email,
+                    googleProfilePicture: picture || '',
+                    'security.lastLogin': admin.firestore.Timestamp.now()
+                });
+            } else {
+                // New user — create account
+                const newUserRef = Users.doc();
+                const newUserData = {
+                    id: newUserRef.id,
+                    googleId: uid,
+                    username: name || email.split('@')[0],
+                    email: email.toLowerCase(),
+                    googleEmail: email.toLowerCase(),
+                    googleProfilePicture: picture || '',
+                    password: '',
+                    adafruitUsername: '',
+                    adafruitApiKey: '',
+                    role: email.toLowerCase() === 'hussianabdk577@gmail.com' ? 'admin' : 'user',
+                    status: 'active',
+                    adminMessage: { show: true, text: 'حسابك معلق حالياً. يرجى التواصل مع المسؤول.', email: 'hussianabdk577@gmail.com', whatsapp: '' },
+                    security: {
+                        lastLogin: admin.firestore.Timestamp.now(),
+                        loginAttempts: 0,
+                        twoFactorEnabled: false
+                    },
+                    preferences: {
+                        theme: 'dark',
+                        privacy: {
+                            allowDataCollection: false,
+                            emailNotifications: true,
+                            securityAlerts: true
+                        }
+                    },
+                    createdAt: admin.firestore.Timestamp.now(),
+                    updatedAt: admin.firestore.Timestamp.now()
+                };
+                await newUserRef.set(newUserData);
+
+                // Return token with flag for new users
+                const token = AuthService.generateJWT({ id: newUserRef.id });
+                const sessionRef = Sessions.doc();
+                await sessionRef.set({
+                    userId: newUserRef.id, token,
+                    deviceInfo: { userAgent: req.get('User-Agent'), ip: req.ip },
+                    isActive: true,
+                    lastActivity: admin.firestore.Timestamp.now(),
+                    expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
+                    createdAt: admin.firestore.Timestamp.now()
+                });
+
+                console.log(`✅ New Google user created: ${email}`);
+                return res.json({ token, isNewUser: true, user: { id: newUserRef.id, username: newUserData.username } });
+            }
+        }
+
+        const user = { id: userDoc.id, ...userDoc.data() };
+        
+        if (user.status === 'blocked' || user.status === 'suspended') {
+             return res.status(403).json({
+                 msg: user.adminMessage?.show ? user.adminMessage.text : 'حسابك معلق حالياً. يرجى التواصل مع المسؤول.',
+                 adminContact: user.adminMessage?.show ? { email: user.adminMessage.email, whatsapp: user.adminMessage.whatsapp } : null,
+                 blocked: true
+             });
+        }
+
+        // --- START 2FA LOGIC FOR GOOGLE ---
+        if (user.security?.twoFactorEnabled) {
+          const code = AuthService.generateResetCode();
+          
+          await Users.doc(user.id).update({
+            'security.twoFactorCode': code,
+            'security.twoFactorCodeExpires': admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000))
+          });
+
+          const mailOptions = {
+            from: process.env.EMAIL_USER,
+            to: user.email,
+            subject: 'رمز التحقق لتسجيل الدخول (Google)',
+            html: `<p>رمز التحقق الخاص بك هو: <strong>${code}</strong>. وهو صالح لمدة 10 دقائق.</p>`
+          };
+          await transporter.sendMail(mailOptions);
+
+          console.log(`2FA code for Google user ${user.email}: ${code}`);
+          return res.json({ twoFactorRequired: true, email: user.email, msg: 'تم إرسال رمز التحقق إلى بريدك الإلكتروني.' });
+        }
+        // --- END 2FA LOGIC FOR GOOGLE ---
+
+        const token = AuthService.generateJWT({ id: user.id });
+
+        const sessionRef = Sessions.doc();
+        await sessionRef.set({
+            userId: user.id, token,
+            deviceInfo: { 
+                 userAgent: req.get('User-Agent'), 
+                 ip: req.ip,
+                 deviceId: deviceInfo?.deviceId || null,
+                 deviceName: deviceInfo?.deviceName || null,
+                 platform: deviceInfo?.platform || null
+            },
+            isActive: true,
+            lastActivity: admin.firestore.Timestamp.now(),
+            expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 365 * 24 * 60 * 60 * 1000)),
+            createdAt: admin.firestore.Timestamp.now()
+        });
+
+        console.log(`✅ Google mobile login: ${email}`);
+        res.json({ token, isNewUser: false, user: { id: user.id, username: user.username } });
+
+    } catch (err) {
+        console.error('❌ خطأ في Google Mobile Auth:', err);
+        res.status(500).json({ msg: `خطأ في الخادم: ${err.message || err}` });
+    }
+});
 app.post('/api/auth/register', async (req, res) => {
     try {
-        const { username, password, email, adafruitUsername, adafruitApiKey } = req.body;
+        const { username, password, email, adafruitUsername, adafruitApiKey, deviceInfo } = req.body;
+
+        // التحقق من الحظر
+        const isBanned = await isDeviceBanned(req.ip, deviceInfo?.deviceId);
+        if (isBanned) {
+             return res.status(403).json({ msg: 'هذا الجهاز محظور.', blocked: true });
+        }
 
         // ✅ فقط username, password, email مطلوبين
         if (!username || !password || !email) {
@@ -503,27 +653,48 @@ app.post('/api/auth/register', async (req, res) => {
             return res.status(400).json({ msg: 'يجب أن تكون كلمة المرور 6 أحرف على الأقل' });
         }
 
-        const exists = await User.findOne({ 
-            $or: [{ email: email.toLowerCase() }, { username }] 
-        });
+        // التحقق من عدم وجود مستخدم بنفس البريد الإلكتروني أو اسم المستخدم
+        const emailSnapshot = await Users.where('email', '==', email.toLowerCase()).limit(1).get();
+        const usernameSnapshot = await Users.where('username', '==', username).limit(1).get();
 
-        if (exists) {
+        if (!emailSnapshot.empty || !usernameSnapshot.empty) {
             return res.status(400).json({ msg: 'المستخدم موجود بالفعل' });
         }
 
         const hashed = await AuthService.hashPassword(password);
-
-        const user = new User({
+        const newUserRef = Users.doc();
+        
+        const userData = {
+            id: newUserRef.id,
             username: username.trim(),
             email: email.toLowerCase().trim(),
             password: hashed,
-            // ✅ Adafruit IO اختياري - يمكن إضافته لاحقاً
             adafruitUsername: adafruitUsername ? adafruitUsername.trim() : '',
-            adafruitApiKey: adafruitApiKey ? adafruitApiKey.trim() : ''
-        });
+            adafruitApiKey: adafruitApiKey ? adafruitApiKey.trim() : '',
+            googleId: '',
+            googleEmail: '',
+            googleProfilePicture: '',
+            role: email.toLowerCase().trim() === 'hussianabdk577@gmail.com' ? 'admin' : 'user',
+            status: 'active',
+            adminMessage: { show: true, text: 'حسابك معلق حالياً. يرجى التواصل مع المسؤول.', email: 'hussianabdk577@gmail.com', whatsapp: '' },
+            security: {
+                lastLogin: admin.firestore.Timestamp.now(),
+                loginAttempts: 0,
+                twoFactorEnabled: false
+            },
+            preferences: {
+                theme: 'dark',
+                privacy: {
+                    allowDataCollection: false,
+                    emailNotifications: true,
+                    securityAlerts: true
+                }
+            },
+            createdAt: admin.firestore.Timestamp.now(),
+            updatedAt: admin.firestore.Timestamp.now()
+        };
 
-        await user.save();
-
+        await newUserRef.set(userData);
         res.status(201).json({ msg: 'تم إنشاء الحساب بنجاح' });
 
     } catch (err) {
@@ -537,25 +708,31 @@ app.post('/api/user/clear-data', auth, async (req, res) => {
         const userId = req.user.id;
         
         // 1. حذف جميع الـ Widgets
-        const deletedWidgets = await Widget.deleteMany({ userId });
+        const widgetsSnapshot = await Widgets.where('userId', '==', userId).get();
+        const batch = db.batch();
+        
+        widgetsSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
         
         // 2. حذف جميع رسائل Terminal
-        await TerminalMessage.deleteMany({ userId });
+        const messagesSnapshot = await TerminalMessages.where('userId', '==', userId).get();
+        messagesSnapshot.docs.forEach(doc => {
+            batch.delete(doc.ref);
+        });
         
-        // 3. إعادة تعيين بيانات Adafruit IO (اختياري)
-        const user = await User.findById(userId);
-        if (!user) {
+        await batch.commit();
+        
+        // 3. تحديث بيانات المستخدم (إعادة تعيين Adafruit بدون التأثير على الحساب)
+        const userDoc = await Users.doc(userId).get();
+        if (!userDoc.exists) {
             return res.status(404).json({ msg: 'المستخدم غير موجود' });
         }
         
-        // مسح بيانات Adafruit فقط (الحساب نفسه يبقى)
-        user.adafruitUsername = '';
-        user.adafruitApiKey = '';
-        
-        // ✅ نحافظ على createdAt (أيام النشاط)
-        // ✅ نحافظ على username, email, password
-        
-        await user.save();
+        await Users.doc(userId).update({
+            adafruitUsername: '',
+            adafruitApiKey: ''
+        });
         
         // 4. إرسال إشعار عبر Socket.IO
         io.to(`user-${userId}`).emit('data-cleared', {
@@ -565,7 +742,7 @@ app.post('/api/user/clear-data', auth, async (req, res) => {
         
         res.json({ 
             msg: 'تم مسح جميع البيانات بنجاح!',
-            deletedWidgets: deletedWidgets.deletedCount,
+            deletedWidgets: widgetsSnapshot.size,
             clearedAt: new Date()
         });
         
@@ -575,17 +752,48 @@ app.post('/api/user/clear-data', auth, async (req, res) => {
     }
 });
 
+// فحص إذا كان الجهاز أو الـ IP محظوراً
+async function isDeviceBanned(ip, deviceId) {
+    if (ip) {
+        const ipBan = await BannedDevices.where('ip', '==', ip).limit(1).get();
+        if (!ipBan.empty) return true;
+    }
+    if (deviceId) {
+        const devBan = await BannedDevices.where('deviceId', '==', deviceId).limit(1).get();
+        if (!devBan.empty) return true;
+    }
+    return false;
+}
+
 // تسجيل الدخول (Login)
 app.post('/api/auth/login', async (req, res) => {
   try {
-    const { email, password } = req.body;
+    const { email, password, deviceInfo } = req.body;
     if (!email || !password) {
       return res.status(400).json({ msg: 'البريد الإلكتروني وكلمة المرور مطلوبان.' });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
+    // التحقق من الحظر
+    const isBanned = await isDeviceBanned(req.ip, deviceInfo?.deviceId);
+    if (isBanned) {
+      return res.status(403).json({ msg: 'هذا الجهاز أو الحساب محظور من استخدام النظام.', blocked: true });
+    }
+
+    const userSnapshot = await Users.where('email', '==', email.toLowerCase()).limit(1).get();
+    
+    if (userSnapshot.empty) {
       return res.status(400).json({ msg: 'بيانات اعتماد غير صحيحة.' });
+    }
+
+    const userDoc = userSnapshot.docs[0];
+    const user = { id: userDoc.id, ...userDoc.data() };
+    
+    if (user.status === 'blocked' || user.status === 'suspended') {
+       return res.status(403).json({
+           msg: user.adminMessage?.show ? user.adminMessage.text : 'حسابك معلق حالياً. يرجى التواصل مع المسؤول.',
+           adminContact: user.adminMessage?.show ? { email: user.adminMessage.email, whatsapp: user.adminMessage.whatsapp } : null,
+           blocked: true
+       });
     }
 
     const isMatch = await AuthService.verifyPassword(password, user.password);
@@ -594,13 +802,15 @@ app.post('/api/auth/login', async (req, res) => {
     }
 
     // --- START 2FA LOGIC ---
-    if (user.security.twoFactorEnabled) {
+    if (user.security?.twoFactorEnabled) {
       const code = AuthService.generateResetCode(); // Generate 6-digit code
-      user.security.twoFactorCode = code;
-      user.security.twoFactorCodeExpires = Date.now() + 10 * 60 * 1000; // 10 minutes expiry
-      await user.save();
+      
+      await Users.doc(user.id).update({
+        'security.twoFactorCode': code,
+        'security.twoFactorCodeExpires': admin.firestore.Timestamp.fromDate(new Date(Date.now() + 10 * 60 * 1000))
+      });
 
-      // Send email with the code (using your existing transporter)
+      // Send email with the code
       const mailOptions = {
         from: process.env.EMAIL_USER,
         to: user.email,
@@ -609,30 +819,41 @@ app.post('/api/auth/login', async (req, res) => {
       };
       await transporter.sendMail(mailOptions);
 
-      console.log(`2FA code for ${user.email}: ${code}`);
+      if (process.env.NODE_ENV !== 'production') {
+        console.log(`2FA code for ${user.email}: ${code}`);
+      }
       // Respond that 2FA is needed, without sending the token
       return res.status(200).json({ twoFactorRequired: true, msg: 'تم إرسال رمز التحقق إلى بريدك الإلكتروني.' });
     }
     // --- END 2FA LOGIC ---
 
     // If 2FA is not enabled, log in directly
-    const token = AuthService.generateJWT({ id: user._id });
-    const session = new Session({
-      userId: user._id,
+    const token = AuthService.generateJWT({ id: user.id });
+    const newSessionRef = Sessions.doc();
+    
+    await newSessionRef.set({
+      userId: user.id,
       token,
       deviceInfo: {
         userAgent: req.get('User-Agent'),
-        ip: req.ip
-      }
+        ip: req.ip,
+        deviceId: deviceInfo?.deviceId || null,
+        deviceName: deviceInfo?.deviceName || null,
+        platform: deviceInfo?.platform || null
+      },
+      isActive: true,
+      lastActivity: admin.firestore.Timestamp.now(),
+      expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+      createdAt: admin.firestore.Timestamp.now()
     });
-    await session.save();
 
-    user.security.lastLogin = Date.now();
-    await user.save();
+    await Users.doc(user.id).update({
+      'security.lastLogin': admin.firestore.Timestamp.now()
+    });
 
     res.json({
       token,
-      user: { id: user._id, username: user.username }
+      user: { id: user.id, username: user.username }
     });
 
   } catch (err) {
@@ -643,42 +864,65 @@ app.post('/api/auth/login', async (req, res) => {
 
 // Add this new endpoint for verifying the 2FA code
 app.post('/api/auth/verify-2fa', async (req, res) => {
-    const { email, twoFactorCode } = req.body;
+    const { email, twoFactorCode, deviceInfo } = req.body;
     if (!email || !twoFactorCode) {
         return res.status(400).json({ msg: "البريد الإلكتروني والرمز مطلوبان." });
     }
 
-    const user = await User.findOne({ 
-        email: email.toLowerCase(),
-        'security.twoFactorCode': twoFactorCode,
-        'security.twoFactorCodeExpires': { $gt: Date.now() }
-    });
+    try {
+        const userSnapshot = await Users.where('email', '==', email.toLowerCase()).limit(1).get();
+        
+        if (userSnapshot.empty) {
+            return res.status(400).json({ msg: "الرمز غير صالح أو منتهي الصلاحية." });
+        }
 
-    if (!user) {
-        return res.status(400).json({ msg: "الرمز غير صالح أو منتهي الصلاحية." });
+        const userDoc = userSnapshot.docs[0];
+        const user = { id: userDoc.id, ...userDoc.data() };
+
+        const codeExpires = user.security?.twoFactorCodeExpires?.toDate?.() || null;
+        
+        if (user.security?.twoFactorCode !== twoFactorCode || !codeExpires || codeExpires < new Date()) {
+            return res.status(400).json({ msg: "الرمز غير صالح أو منتهي الصلاحية." });
+        }
+
+        // Clear the code
+        await Users.doc(user.id).update({
+            'security.twoFactorCode': '',
+            'security.twoFactorCodeExpires': null
+        });
+
+        // If code is correct, issue token and log in
+        const token = AuthService.generateJWT({ id: user.id });
+        const newSessionRef = Sessions.doc();
+        
+        await newSessionRef.set({
+          userId: user.id,
+          token,
+          deviceInfo: { 
+            userAgent: req.get('User-Agent'), 
+            ip: req.ip,
+            deviceId: deviceInfo?.deviceId || null,
+            deviceName: deviceInfo?.deviceName || null,
+            platform: deviceInfo?.platform || null
+          },
+          isActive: true,
+          lastActivity: admin.firestore.Timestamp.now(),
+          expiresAt: admin.firestore.Timestamp.fromDate(new Date(Date.now() + 24 * 60 * 60 * 1000)),
+          createdAt: admin.firestore.Timestamp.now()
+        });
+
+        await Users.doc(user.id).update({
+          'security.lastLogin': admin.firestore.Timestamp.now()
+        });
+
+        res.json({
+          token,
+          user: { id: user.id, username: user.username }
+        });
+    } catch (err) {
+        console.error('❌ خطأ في التحقق من 2FA:', err);
+        res.status(500).json({ msg: 'خطأ في الخادم' });
     }
-
-    // Clear the code
-    user.security.twoFactorCode = undefined;
-    user.security.twoFactorCodeExpires = undefined;
-    await user.save();
-
-    // If code is correct, issue token and log in
-    const token = AuthService.generateJWT({ id: user._id });
-    const session = new Session({
-      userId: user._id,
-      token,
-      deviceInfo: { userAgent: req.get('User-Agent'), ip: req.ip }
-    });
-    await session.save();
-
-    user.security.lastLogin = Date.now();
-    await user.save();
-
-    res.json({
-      token,
-      user: { id: user._id, username: user.username }
-    });
 });
 
 // تسجيل الخروج (Logout)
@@ -686,10 +930,18 @@ app.post('/api/auth/logout', auth, async (req, res) => {
   try {
     // تحديد الرمز الحالي كغير نشط في قاعدة البيانات
     const currentToken = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
-    await Session.findOneAndUpdate(
-      { userId: req.user._id, token: currentToken },
-      { isActive: false, expiresAt: new Date() } // إنهاء صلاحية الجلسة فوراً
-    );
+    
+    const sessionSnapshot = await Sessions.where('userId', '==', req.user.id)
+        .where('token', '==', currentToken).limit(1).get();
+    
+    if (!sessionSnapshot.empty) {
+        const sessionDoc = sessionSnapshot.docs[0];
+        await Sessions.doc(sessionDoc.id).update({
+          isActive: false,
+          expiresAt: admin.firestore.Timestamp.now()
+        });
+    }
+    
     res.json({ msg: 'تم تسجيل الخروج بنجاح من هذه الجلسة.' });
   } catch (err) {
     console.error('❌ خطأ في عملية تسجيل الخروج:', err);
@@ -705,24 +957,34 @@ app.post('/api/auth/forgot-password', async (req, res) => {
       return res.status(400).json({ msg: 'البريد الإلكتروني مطلوب لإعادة تعيين كلمة المرور.' });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
+    const userSnapshot = await Users.where('email', '==', email.toLowerCase()).limit(1).get();
+    
+    if (userSnapshot.empty) {
       // لا تخبر المهاجم إذا كان البريد الإلكتروني موجودًا أم لا لأسباب أمنية
       return res.status(400).json({ msg: 'إذا كان البريد الإلكتروني مسجلاً لدينا، فسيتم إرسال رمز إعادة تعيين كلمة المرور إليه.' });
     }
 
+    const userDoc = userSnapshot.docs[0];
+    const user = { id: userDoc.id, ...userDoc.data() };
+
     // توليد رمز إعادة تعيين فريد
     const code = AuthService.generateResetCode();
     // حفظ الرمز في قاعدة البيانات مع وقت انتهاء صلاحية
-    const resetCode = new ResetCode({ email: email.toLowerCase(), code });
-    await resetCode.save();
+    const newResetCodeRef = ResetCodes.doc();
+    await newResetCodeRef.set({
+      email: email.toLowerCase(),
+      code,
+      createdAt: admin.firestore.Timestamp.now()
+    });
 
     // طباعة الرمز في الـ console لأغراض التطوير والاختبار.
-    console.log(`\n==================================================`);
-    console.log(`🔑 رمز إعادة التعيين الجديد لـ ${email}`);
-    console.log(`🔢 الرمز: ${code}`);
-    console.log(`⏱️ انتهاء الصلاحية: ${new Date(Date.now() + 10 * 60 * 1000).toLocaleString('ar-EG')}`);
-    console.log(`==================================================\n`);
+    if (process.env.NODE_ENV !== 'production') {
+      console.log(`\n==================================================`);
+      console.log(`🔑 رمز إعادة التعيين الجديد لـ ${email}`);
+      console.log(`🔢 الرمز: ${code}`);
+      console.log(`⏱️ انتهاء الصلاحية: ${new Date(Date.now() + 10 * 60 * 1000).toLocaleString('ar-EG')}`);
+      console.log(`==================================================\n`);
+    }
 
     const mailOptions = {
       from: process.env.EMAIL_USER,
@@ -765,13 +1027,19 @@ app.post('/api/auth/verify-reset-code', async (req, res) => {
     }
 
     // البحث عن الرمز والتحقق من صلاحيته (لم تنتهي صلاحيته بعد)
-    const record = await ResetCode.findOne({
-      email: email.toLowerCase(),
-      code,
-      createdAt: { $gt: new Date(Date.now() - 10 * 60 * 1000) } // الرمز صالح لمدة 10 دقائق
-    });
+    const resetCodeSnapshot = await ResetCodes.where('email', '==', email.toLowerCase())
+        .where('code', '==', code).limit(1).get();
 
-    if (!record) {
+    if (resetCodeSnapshot.empty) {
+      return res.status(400).json({ msg: 'الرمز غير صالح أو منتهي الصلاحية. يرجى طلب رمز جديد.' });
+    }
+
+    const resetCodeDoc = resetCodeSnapshot.docs[0];
+    const createdAt = resetCodeDoc.data().createdAt?.toDate?.() || new Date(resetCodeDoc.data().createdAt);
+    
+    // تحقق من أن الرمز لا يزال صالحاً (10 دقائق)
+    if (new Date() - createdAt > 10 * 60 * 1000) {
+      await ResetCodes.doc(resetCodeDoc.id).delete();
       return res.status(400).json({ msg: 'الرمز غير صالح أو منتهي الصلاحية. يرجى طلب رمز جديد.' });
     }
 
@@ -796,25 +1064,35 @@ app.post('/api/auth/reset-password', async (req, res) => {
       return res.status(400).json({ msg: 'يجب أن تكون كلمة المرور الجديدة 6 أحرف على الأقل.' });
     }
 
-    const user = await User.findOne({ email: email.toLowerCase() });
-    if (!user) {
+    const userSnapshot = await Users.where('email', '==', email.toLowerCase()).limit(1).get();
+    if (userSnapshot.empty) {
       return res.status(404).json({ msg: 'المستخدم غير موجود.' });
     }
 
-    const record = await ResetCode.findOne({
-      email: email.toLowerCase(),
-      code,
-      createdAt: { $gt: new Date(Date.now() - 10 * 60 * 1000) } // التحقق من أن الرمز لم تنته صلاحيته
-    });
-    if (!record) {
+    const userDoc = userSnapshot.docs[0];
+
+    const resetCodeSnapshot = await ResetCodes.where('email', '==', email.toLowerCase())
+        .where('code', '==', code).limit(1).get();
+        
+    if (resetCodeSnapshot.empty) {
+      return res.status(400).json({ msg: 'الرمز غير صالح أو منتهي الصلاحية. يرجى طلب رمز جديد.' });
+    }
+
+    const resetCodeDoc = resetCodeSnapshot.docs[0];
+    const createdAt = resetCodeDoc.data().createdAt?.toDate?.() || new Date(resetCodeDoc.data().createdAt);
+    
+    // تحقق من أن الرمز لا يزال صالحاً (10 دقائق)
+    if (new Date() - createdAt > 10 * 60 * 1000) {
+      await ResetCodes.doc(resetCodeDoc.id).delete();
       return res.status(400).json({ msg: 'الرمز غير صالح أو منتهي الصلاحية. يرجى طلب رمز جديد.' });
     }
 
     // تحديث كلمة المرور وحذف الرمز من قاعدة البيانات
     const hashed = await AuthService.hashPassword(newPassword);
-    user.password = hashed;
-    await user.save();
-    await ResetCode.deleteOne({ _id: record._id }); // حذف الرمز بعد الاستخدام الناجح
+    await Users.doc(userDoc.id).update({
+      password: hashed
+    });
+    await ResetCodes.doc(resetCodeDoc.id).delete(); // حذف الرمز بعد الاستخدام الناجح
 
     res.json({ msg: 'تم تحديث كلمة المرور بنجاح. يمكنك الآن تسجيل الدخول بكلمة المرور الجديدة.' });
   } catch (err) {
@@ -829,15 +1107,22 @@ app.post('/api/auth/reset-password', async (req, res) => {
 // جلب جميع الأدوات الخاصة بالمستخدم
 app.get('/api/widgets', auth, async (req, res) => {
   try {
-    const widgets = await Widget.find({ userId: req.user._id }).sort({ createdAt: -1 });
+    const widgetsSnapshot = await Widgets.where('userId', '==', req.user.id).orderBy('createdAt', 'desc').get();
+    
+    const widgets = widgetsSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt,
+      updatedAt: doc.data().updatedAt?.toDate?.() || doc.data().updatedAt,
+      'state.lastUpdate': doc.data().state?.lastUpdate?.toDate?.() || doc.data().state?.lastUpdate
+    }));
+    
     res.json(widgets);
   } catch (err) {
     console.error('❌ خطأ في جلب الأدوات:', err);
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء جلب الأدوات.' });
   }
 });
-
-/// server.js
 
 app.post('/api/widgets', auth, async (req, res) => {
   try {
@@ -847,8 +1132,10 @@ app.post('/api/widgets', auth, async (req, res) => {
       return res.status(400).json({ msg: 'اسم الأداة، اسم المجرى، والنوع هي حقول مطلوبة.' });
     }
     
+    const newWidgetRef = Widgets.doc();
     const widgetData = {
-      userId: req.user._id,
+      id: newWidgetRef.id,
+      userId: req.user.id,
       name: name.trim(),
       feedName: feedName.trim(),
       type: type,
@@ -862,12 +1149,31 @@ app.post('/api/widgets', auth, async (req, res) => {
         onCommand: onCommand || (type === 'push' ? 'PUSH' : 'ON'),
         offCommand: (type === 'toggle') ? (offCommand || 'OFF') : '',
         unit: unit || ''
-      }
+      },
+      gs: {
+        x: 0,
+        y: 0,
+        w: 1,
+        h: 1
+      },
+      state: {
+        isActive: false,
+        lastValue: null,
+        lastUpdate: admin.firestore.Timestamp.now()
+      },
+      analytics: {
+        totalCommands: 0,
+        successfulCommands: 0
+      },
+      createdAt: admin.firestore.Timestamp.now(),
+      updatedAt: admin.firestore.Timestamp.now()
     };
 
     // دمج إعدادات السلايدر إذا كان النوع هو سلايدر
-    if (type === 'slider' && configuration) {
-        widgetData.configuration = { ...widgetData.configuration, ...configuration };
+    if (type === 'slider') {
+        widgetData.configuration.min = configuration?.min !== undefined ? configuration.min : 0;
+        widgetData.configuration.max = configuration?.max !== undefined ? configuration.max : 100;
+        widgetData.configuration.step = configuration?.step || 1;
     }
 
     // دمج إعدادات الجويستيك إذا كان النوع هو جويستيك
@@ -875,22 +1181,29 @@ app.post('/api/widgets', auth, async (req, res) => {
         widgetData.configuration = { ...widgetData.configuration, ...joystickCommands };
     }
 
-    const widget = new Widget(widgetData);
-    await widget.save();
+    await newWidgetRef.set(widgetData);
 
-    io.to(`user-${req.user._id}`).emit('widget-added', widget);
-    res.status(201).json(widget);
+    io.to(`user-${req.user.id}`).emit('widget-added', widgetData);
+    res.status(201).json(widgetData);
 
   } catch (err) {
     console.error('❌ خطأ في إضافة الأداة:', err);
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء إضافة الأداة.' });
   }
 });
-// server.js
-
 app.put('/api/widgets/:id', auth, async (req, res) => {
   try {
     const { name, feedName, type, icon, primaryColor, activeColor, glowColor, unit, onCommand, offCommand, configuration, joystickCommands } = req.body;
+
+    const widgetDoc = await Widgets.doc(req.params.id).get();
+    
+    if (!widgetDoc.exists) {
+      return res.status(404).json({ msg: 'الأداة غير موجودة أو لا تملك صلاحية لتعديلها.' });
+    }
+
+    if (widgetDoc.data().userId !== req.user.id) {
+      return res.status(403).json({ msg: 'لا تملك صلاحية لتعديل هذه الأداة.' });
+    }
 
     const updatedData = {
         name: name ? name.trim() : undefined,
@@ -920,20 +1233,18 @@ app.put('/api/widgets/:id', auth, async (req, res) => {
         'configuration.upLeftCommand': joystickCommands?.upLeftCommand,
         'configuration.downRightCommand': joystickCommands?.downRightCommand,
         'configuration.downLeftCommand': joystickCommands?.downLeftCommand,
-        updatedAt: new Date()
+        updatedAt: admin.firestore.Timestamp.now()
     };
 
-    const updatedWidget = await Widget.findOneAndUpdate(
-      { _id: req.params.id, userId: req.user._id },
-      { $set: updatedData },
-      { new: true, runValidators: true, omitUndefined: true }
-    );
+    // إزالة القيم undefined
+    Object.keys(updatedData).forEach(key => updatedData[key] === undefined && delete updatedData[key]);
 
-    if (!updatedWidget) {
-      return res.status(404).json({ msg: 'الأداة غير موجودة أو لا تملك صلاحية لتعديلها.' });
-    }
+    await Widgets.doc(req.params.id).update(updatedData);
 
-    io.to(`user-${req.user._id}`).emit('widget-updated', updatedWidget);
+    const updatedWidgetDoc = await Widgets.doc(req.params.id).get();
+    const updatedWidget = { id: updatedWidgetDoc.id, ...updatedWidgetDoc.data() };
+
+    io.to(`user-${req.user.id}`).emit('widget-updated', updatedWidget);
     res.json({ msg: 'تم تحديث الأداة بنجاح.', widget: updatedWidget });
 
   } catch (err) {
@@ -941,19 +1252,22 @@ app.put('/api/widgets/:id', auth, async (req, res) => {
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء تحديث الأداة.' });
   }
 });
-app.get('/css/styles.css', (req, res) => {
-    res.set('Content-Type', 'text/css');
-    res.sendFile(path.join(__dirname, 'public/css/styles.css'));
-});
 // حذف أداة
 app.delete('/api/widgets/:id', auth, async (req, res) => {
   try {
-    const widget = await Widget.findOneAndDelete({ _id: req.params.id, userId: req.user._id });
-    if (!widget) {
+    const widgetDoc = await Widgets.doc(req.params.id).get();
+    
+    if (!widgetDoc.exists) {
       return res.status(404).json({ msg: 'الأداة غير موجودة أو لا تملك صلاحية لحذفها.' });
     }
 
-    io.to(`user-${req.user._id}`).emit('widget-deleted', { widgetId: req.params.id }); // إرسال تحديث لجميع الأجهزة المتصلة
+    if (widgetDoc.data().userId !== req.user.id) {
+      return res.status(403).json({ msg: 'لا تملك صلاحية لحذف هذه الأداة.' });
+    }
+
+    await Widgets.doc(req.params.id).delete();
+
+    io.to(`user-${req.user.id}`).emit('widget-deleted', { widgetId: req.params.id }); // إرسال تحديث لجميع الأجهزة المتصلة
 
     res.json({ msg: 'تم حذف الأداة بنجاح.' });
   } catch (err) {
@@ -961,6 +1275,9 @@ app.delete('/api/widgets/:id', auth, async (req, res) => {
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء حذف الأداة.' });
   }
 });
+
+// In-memory quota tracker
+const userAdafruitQuotas = new Map();
 
 // إرسال الأوامر (Command Sending) إلى Adafruit IO
 app.post('/api/command/send', auth, async (req, res) => {
@@ -970,9 +1287,16 @@ app.post('/api/command/send', auth, async (req, res) => {
       return res.status(400).json({ msg: 'معرف الأداة والقيمة مطلوبان لإرسال الأمر.' });
     }
 
-    const widget = await Widget.findOne({ _id: widgetId, userId: req.user._id });
-    if (!widget) {
+    const widgetDoc = await Widgets.doc(widgetId).get();
+    
+    if (!widgetDoc.exists) {
       return res.status(404).json({ msg: 'الأداة غير موجودة.' });
+    }
+
+    const widget = { id: widgetDoc.id, ...widgetDoc.data() };
+
+    if (widget.userId !== req.user.id) {
+      return res.status(403).json({ msg: 'لا تملك صلاحية للتحكم بهذه الأداة.' });
     }
 
     // التحقق من بيانات Adafruit IO للمستخدم
@@ -991,7 +1315,7 @@ app.post('/api/command/send', auth, async (req, res) => {
       commandValue = widget.configuration.onCommand;
     }
 
-    const url = `https://io.adafruit.com/api/v2/${req.user.adafruitUsername}/feeds/${widget.feedName}/data`;
+    const url = `https://io.adafruit.com/api/v2/${req.user.adafruitUsername}/feeds/${encodeURIComponent(widget.feedName)}/data`;
     const response = await fetch(url, {
       method: 'POST',
       headers: {
@@ -1002,77 +1326,59 @@ app.post('/api/command/send', auth, async (req, res) => {
       timeout: 10000
     });
 
+    const rateLimitRemaining = response.headers.get('x-ratelimit-remaining');
+    if (rateLimitRemaining) {
+        userAdafruitQuotas.set(req.user.id, {
+            remaining: parseInt(rateLimitRemaining),
+            lastUpdated: new Date()
+        });
+    }
+
     if (!response.ok) {
       const errorText = await response.text();
       console.error(`❌ خطأ من Adafruit IO (${response.status}): ${errorText}`);
       throw new Error(`خطأ في Adafruit IO: ${response.status} - ${response.statusText}. يرجى التحقق من اسم المجرى ومفتاح API.`);
     }
 
-    // تحديث الحالة
-    widget.analytics.totalCommands = (widget.analytics.totalCommands || 0) + 1;
-    widget.analytics.successfulCommands = (widget.analytics.successfulCommands || 0) + 1;
-    widget.state.lastValue = commandValue;
-    widget.state.lastUpdate = new Date();
-
+    // تحديث الحالة في الذاكرة لتجنب الكتابة الكثيفة في قاعدة البيانات (لتوفير حصة Firebase)
+    let isActiveState = widget.state.isActive;
     if (widget.type === 'toggle') {
-      widget.state.isActive = commandValue.toUpperCase() === widget.configuration.onCommand.toUpperCase();
+      isActiveState = commandValue.toUpperCase() === widget.configuration.onCommand.toUpperCase();
     } else if (widget.type === 'push') {
-      widget.state.isActive = true;
+      isActiveState = true;
+      
+      // إعادة تعيين حالة الزر بعد 500ms 
       setTimeout(async () => {
-        widget.state.isActive = false;
-        await widget.save();
-        io.to(`user-${req.user._id}`).emit('widget-status-update', {
-          widgetId: widget._id,
+        io.to(`user-${req.user.id}`).emit('widget-status-update', {
+          widgetId: widget.id,
           isActive: false,
-          lastValue: widget.state.lastValue
+          lastValue: commandValue
         });
       }, 500);
     }
 
-    // ✅ حفظ الرسالة لو نوعها ترمنال
+    // إرسال الإشعار للواجهة الأمامية باستخدام Socket.IO
+    io.to(`user-${req.user.id}`).emit('widget-status-update', {
+      widgetId: widget.id,
+      isActive: isActiveState,
+      lastValue: commandValue,
+      lastUpdate: new Date()
+    });
+    
+    // إرسال كرسالة محطة طرفية للواجهة لو كان من نوع ترمنال
     if (widget.type === 'terminal') {
-      const terminalMessage = new TerminalMessage({
-        userId: req.user._id,
-        widgetId: widget._id,
+      io.to(`user-${req.user.id}`).emit('terminal-message', {
+        widgetId: widget.id,
         message: commandValue,
         type: 'sent',
         timestamp: new Date()
       });
-      await terminalMessage.save();
-
-      io.to(`user-${req.user._id}`).emit('terminal-message', {
-        widgetId: widget._id,
-        message: commandValue,
-        type: 'sent',
-        timestamp: terminalMessage.timestamp
-      });
     }
-
-    await widget.save();
-
-    io.to(`user-${req.user._id}`).emit('widget-status-update', {
-      widgetId: widget._id,
-      isActive: widget.state.isActive,
-      lastValue: widget.state.lastValue,
-      lastUpdate: widget.state.lastUpdate
-    });
 
     res.json({ msg: 'تم إرسال الأمر بنجاح إلى Adafruit IO.', widget });
 
   } catch (err) {
     console.error('❌ خطأ في إرسال الأمر إلى Adafruit IO:', err.message);
-
-    // زيادة عدد المحاولات حتى مع الفشل
-    if (req.body.widgetId) {
-      try {
-        await Widget.findByIdAndUpdate(req.body.widgetId, {
-          $inc: { 'analytics.totalCommands': 1 }
-        });
-      } catch (updateErr) {
-        console.error('❌ خطأ في تحديث إحصائيات الأوامر الفاشلة:', updateErr);
-      }
-    }
-
     res.status(500).json({ msg: `حدث خطأ في الخادم أثناء إرسال الأمر: ${err.message}` });
   }
 });
@@ -1087,16 +1393,24 @@ app.get('/api/terminal/messages/:widgetId', auth, async (req, res) => {
     const userId = req.user.id;
 
     // تأكد أن الويدجت موجود وينتمي للمستخدم ونوعه 'terminal'
-    const widget = await Widget.findOne({ _id: widgetId, userId, type: 'terminal' });
-    if (!widget) {
+    const widgetDoc = await Widgets.doc(widgetId).get();
+    
+    if (!widgetDoc.exists || widgetDoc.data().userId !== userId || widgetDoc.data().type !== 'terminal') {
       return res.status(404).json({ msg: 'لم يتم العثور على أداة الترمنال هذه أو لا تملك صلاحية الوصول إليها.' });
     }
 
-    const messages = await TerminalMessage.find({ widgetId, userId })
-      .sort({ timestamp: -1 }) // الأحدث أولاً
-      .limit(50); // آخر 50 رسالة
+    const messagesSnapshot = await TerminalMessages.where('widgetId', '==', widgetId)
+        .where('userId', '==', userId)
+        .orderBy('timestamp', 'desc')
+        .limit(50).get();
+    
+    const messages = messagesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
+    })).reverse(); // عكس الترتيب لعرض الأقدم أولاً
 
-    res.json(messages.reverse()); // عكس الترتيب لعرض الأقدم أولاً في الواجهة الأمامية
+    res.json(messages);
 
   } catch (err) {
     console.error('❌ خطأ في جلب رسائل الترمنال:', err.message);
@@ -1105,15 +1419,17 @@ app.get('/api/terminal/messages/:widgetId', auth, async (req, res) => {
 });
 app.get('/api/user/me', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
-        if (!user) return res.status(404).json({ msg: 'المستخدم غير موجود' });
+        const userDoc = await Users.doc(req.user.id).get();
+        if (!userDoc.exists) return res.status(404).json({ msg: 'المستخدم غير موجود' });
 
+        const user = userDoc.data();
+        
         // ✅ الحساب يكون مكتمل إذا كان عنده password
         // (Google users بدون password يعتبروا غير مكتملين)
         const isAccountComplete = !!(user.password);
 
         const userProfile = {
-            id: user._id,
+            id: user.id || userDoc.id,
             username: user.username,
             email: user.email,
             googleId: user.googleId,
@@ -1123,11 +1439,11 @@ app.get('/api/user/me', auth, async (req, res) => {
             adafruitUsername: user.adafruitUsername || '',
             preferences: user.preferences,
             security: {
-                lastLogin: user.security?.lastLogin,
+                lastLogin: user.security?.lastLogin?.toDate?.() || user.security?.lastLogin,
                 twoFactorEnabled: user.security?.twoFactorEnabled
             },
-            createdAt: user.createdAt,
-            updatedAt: user.updatedAt,
+            updatedAt: user.updatedAt?.toDate?.() || user.updatedAt,
+            role: (user.email.toLowerCase() === 'hussianabdk577@gmail.com' || user.googleEmail?.toLowerCase() === 'hussianabdk577@gmail.com') ? 'admin' : (user.role || 'user'),
             isComplete: isAccountComplete
         };
 
@@ -1141,16 +1457,19 @@ app.get('/api/user/me', auth, async (req, res) => {
 // جلب إحصائيات المستخدم
 app.get('/api/user/stats', auth, async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    const widgets = await Widget.find({ userId });
+    const widgetsSnapshot = await Widgets.where('userId', '==', userId).get();
+    const widgets = widgetsSnapshot.docs.map(doc => doc.data());
+    
     const totalWidgets = widgets.length;
     const totalCommands = widgets.reduce((sum, widget) => sum + (widget.analytics?.totalCommands || 0), 0);
     const successfulCommands = widgets.reduce((sum, widget) => sum + (widget.analytics?.successfulCommands || 0), 0);
     const successRate = totalCommands > 0 ? Math.round((successfulCommands / totalCommands) * 100) : 100;
 
     // حساب الأيام النشطة (تبسيط لأغراض العرض)
-    const daysSinceJoin = Math.floor((Date.now() - new Date(req.user.createdAt).getTime()) / (1000 * 60 * 60 * 24));
+    const userCreatedAt = req.user.createdAt?.toDate?.() || new Date(req.user.createdAt);
+    const daysSinceJoin = Math.floor((Date.now() - userCreatedAt.getTime()) / (1000 * 60 * 60 * 24));
     const activeDays = daysSinceJoin > 0 ? daysSinceJoin : 1; // على الأقل يوم واحد
 
     res.json({
@@ -1170,10 +1489,42 @@ app.get('/api/user/stats', auth, async (req, res) => {
 // جلب جلسات المستخدم النشطة
 app.get('/api/user/sessions', auth, async (req, res) => {
   try {
-    const sessions = await Session.find({
-      userId: req.user._id,
-      isActive: true
-    }).sort({ lastActivity: -1 }); // ترتيب من الأحدث إلى الأقدم
+    // 1. تنظيف الجلسات القديمة (أكثر من أسبوع) - في try-catch منفصل حتى لا يعطل جلب الجلسات
+    try {
+      const allUserSessions = await Sessions.where('userId', '==', req.user.id).get();
+      const oneWeekAgo = new Date();
+      oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+      
+      const batch = db.batch();
+      let deletedCount = 0;
+      
+      allUserSessions.docs.forEach(doc => {
+        const lastActivity = doc.data().lastActivity?.toDate?.() || null;
+        if (lastActivity && lastActivity < oneWeekAgo) {
+          batch.delete(doc.ref);
+          deletedCount++;
+        }
+      });
+      
+      if (deletedCount > 0) {
+        await batch.commit();
+        console.log(`🧹 تم مسح ${deletedCount} جلسة قديمة للمستخدم ${req.user.id}`);
+      }
+    } catch (cleanupErr) {
+      console.warn('⚠️ تعذر تنظيف الجلسات القديمة:', cleanupErr.message);
+    }
+
+    // 2. جلب الجلسات النشطة المتبقية
+    const sessionsSnapshot = await Sessions.where('userId', '==', req.user.id)
+        .where('isActive', '==', true)
+        .orderBy('lastActivity', 'desc').get();
+    
+    const sessions = sessionsSnapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+        lastActivity: doc.data().lastActivity?.toDate?.() || doc.data().lastActivity,
+        createdAt: doc.data().createdAt?.toDate?.() || doc.data().createdAt
+    }));
 
     res.json(sessions);
   } catch (err) {
@@ -1186,12 +1537,17 @@ app.get('/api/user/sessions', auth, async (req, res) => {
 app.delete('/api/user/sessions/:sessionId', auth, async (req, res) => {
   try {
     // التأكد من أن المستخدم يملك صلاحية إنهاء هذه الجلسة
-    const session = await Session.findOne({ _id: req.params.sessionId, userId: req.user._id });
-    if (!session) {
+    const sessionDoc = await Sessions.doc(req.params.sessionId).get();
+    
+    if (!sessionDoc.exists || sessionDoc.data().userId !== req.user.id) {
       return res.status(404).json({ msg: 'الجلسة غير موجودة أو لا تملك صلاحية لإنهائها.' });
     }
 
-    await Session.findByIdAndUpdate(req.params.sessionId, { isActive: false, expiresAt: new Date() });
+    await Sessions.doc(req.params.sessionId).update({ 
+      isActive: false, 
+      expiresAt: admin.firestore.Timestamp.now()
+    });
+    
     res.json({ msg: 'تم إنهاء الجلسة بنجاح.' });
   } catch (err) {
     console.error('❌ خطأ في إنهاء الجلسة:', err);
@@ -1203,18 +1559,22 @@ app.delete('/api/user/sessions/:sessionId', auth, async (req, res) => {
 app.put('/api/user/update', auth, async (req, res) => {
   try {
     const { username, email, password, adafruitUsername, adafruitApiKey } = req.body;
-    const user = await User.findById(req.user._id);
-    if (!user) return res.status(404).json({ msg: 'المستخدم غير موجود.' });
+    const userDoc = await Users.doc(req.user.id).get();
+    
+    if (!userDoc.exists) return res.status(404).json({ msg: 'المستخدم غير موجود.' });
+
+    const user = userDoc.data();
+    const updateData = {};
 
     // تحديث اسم المستخدم
     if (username !== undefined && username.trim() !== '') {
       const u = username.trim();
       if (u && u !== user.username) {
-        const usernameExists = await User.findOne({ username: u, _id: { $ne: user._id } });
-        if (usernameExists) {
+        const usernameSnapshot = await Users.where('username', '==', u).limit(1).get();
+        if (!usernameSnapshot.empty && usernameSnapshot.docs[0].id !== userDoc.id) {
           return res.status(400).json({ msg: 'اسم المستخدم هذا مستخدم بالفعل من قبل شخص آخر.' });
         }
-        user.username = u;
+        updateData.username = u;
       }
     }
 
@@ -1222,11 +1582,11 @@ app.put('/api/user/update', auth, async (req, res) => {
     if (email !== undefined && email.trim() !== '') {
       const e = email.trim().toLowerCase();
       if (e && e !== user.email) {
-        const emailExists = await User.findOne({ email: e, _id: { $ne: user._id } });
-        if (emailExists) {
+        const emailSnapshot = await Users.where('email', '==', e).limit(1).get();
+        if (!emailSnapshot.empty && emailSnapshot.docs[0].id !== userDoc.id) {
           return res.status(400).json({ msg: 'البريد الإلكتروني هذا مستخدم بالفعل من قبل شخص آخر.' });
         }
-        user.email = e;
+        updateData.email = e;
       }
     }
 
@@ -1235,24 +1595,24 @@ app.put('/api/user/update', auth, async (req, res) => {
       if (password.length < 6) {
         return res.status(400).json({ msg: 'كلمة المرور الجديدة يجب أن تكون 6 أحرف على الأقل.' });
       }
-      user.password = await AuthService.hashPassword(password);
+      updateData.password = await AuthService.hashPassword(password);
     }
 
     // تحديث بيانات Adafruit IO
-    user.adafruitUsername = (adafruitUsername || '').trim();
-    user.adafruitApiKey = (adafruitApiKey || '').trim();
+    updateData.adafruitUsername = (adafruitUsername || '').trim();
+    updateData.adafruitApiKey = (adafruitApiKey || '').trim();
+    updateData.updatedAt = admin.firestore.Timestamp.now();
 
-    await user.save();
+    await Users.doc(req.user.id).update(updateData);
+    
     // إرجاع بيانات المستخدم المحدثة (بدون كلمة المرور)
-    const updated = await User.findById(user._id).select('-password');
-    res.json({ msg: 'تم تحديث ملفك الشخصي بنجاح.', user: updated });
+    const updatedUserDoc = await Users.doc(req.user.id).get();
+    const updatedUser = updatedUserDoc.data();
+    delete updatedUser.password;
+    
+    res.json({ msg: 'تم تحديث ملفك الشخصي بنجاح.', user: updatedUser });
   } catch (err) {
     console.error('❌ خطأ في تحديث ملف المستخدم الشخصي:', err);
-    // معالجة الأخطاء المتعلقة بتكرار البيانات (مثلاً إذا تم استخدام اسم المستخدم/البريد الإلكتروني بالفعل)
-    if (err.code === 11000) {
-      if (err.keyPattern.username) return res.status(400).json({ msg: 'اسم المستخدم هذا مستخدم بالفعل.' });
-      if (err.keyPattern.email) return res.status(400).json({ msg: 'البريد الإلكتروني هذا مستخدم بالفعل.' });
-    }
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء تحديث ملفك الشخصي. يرجى المحاولة مرة أخرى.' });
   }
 });
@@ -1283,7 +1643,7 @@ app.put('/api/user/preferences', auth, async (req, res) => {
       return res.status(400).json({ msg: 'لا توجد بيانات لتحديثها في التفضيلات.' });
     }
 
-    await User.findByIdAndUpdate(req.user._id, updateData, { new: true, runValidators: true });
+    await Users.doc(req.user.id).update(updateData);
 
     res.json({ msg: 'تم حفظ إعدادات التفضيلات والخصوصية بنجاح.' });
   } catch (err) {
@@ -1334,8 +1694,15 @@ app.get('/api/sensors/:widgetId/data', auth, async (req, res) => {
   try {
     const { widgetId } = req.params;
     
-    const widget = await Widget.findOne({ _id: widgetId, userId: req.user._id, type: 'sensor' });
-    if (!widget) {
+    const widgetDoc = await Widgets.doc(widgetId).get();
+    
+    if (!widgetDoc.exists) {
+      return res.status(404).json({ msg: 'الحساس غير موجود' });
+    }
+
+    const widget = { id: widgetDoc.id, ...widgetDoc.data() };
+    
+    if (widget.userId !== req.user.id || widget.type !== 'sensor') {
       return res.status(404).json({ msg: 'الحساس غير موجود' });
     }
 
@@ -1357,14 +1724,15 @@ app.get('/api/sensors/:widgetId/data', auth, async (req, res) => {
     const data = await response.json();
     
     // تحديث حالة الويدجت
-    widget.state.lastValue = data.value;
-    widget.state.lastUpdate = new Date(data.created_at);
-    widget.state.isActive = true;
-    await widget.save();
+    await Widgets.doc(widgetId).update({
+      'state.lastValue': data.value,
+      'state.lastUpdate': admin.firestore.Timestamp.fromDate(new Date(data.created_at)),
+      'state.isActive': true
+    });
 
     // إرسال تحديث عبر Socket.IO
-    io.to(`user-${req.user._id}`).emit('sensor-data', {
-      widgetId: widget._id,
+    io.to(`user-${req.user.id}`).emit('sensor-data', {
+      widgetId: widget.id,
       value: data.value,
       timestamp: data.created_at,
       isActive: true
@@ -1389,15 +1757,9 @@ app.put('/api/user/update-google-picture', auth, async (req, res) => {
     try {
         const { googleProfilePicture } = req.body;
         
-        const user = await User.findByIdAndUpdate(
-            req.user.id,
-            { googleProfilePicture },
-            { new: true }
-        );
-        
-        if (!user) {
-            return res.status(404).json({ msg: 'المستخدم غير موجود' });
-        }
+        await Users.doc(req.user.id).update({
+            googleProfilePicture
+        });
         
         res.json({ msg: 'تم تحديث الصورة الشخصية بنجاح', googleProfilePicture });
     } catch (err) {
@@ -1411,17 +1773,27 @@ app.get('/api/terminals/:widgetId/messages', auth, async (req, res) => {
   try {
     const { widgetId } = req.params;
     const { limit = 50 } = req.query; // دعم parameter limit
-    const userId = req.user._id;
+    const userId = req.user.id;
 
-    const widget = await Widget.findOne({ _id: widgetId, userId, type: 'terminal' });
-    if (!widget) {
+    const widgetDoc = await Widgets.doc(widgetId).get();
+    
+    if (!widgetDoc.exists || widgetDoc.data().userId !== userId || widgetDoc.data().type !== 'terminal') {
       return res.status(404).json({ msg: 'الترمينال غير موجود' });
     }
 
+    const widget = { id: widgetDoc.id, ...widgetDoc.data() };
+
     // جلب الرسائل مع دعم limit
-    const messages = await TerminalMessage.find({ widgetId, userId })
-      .sort({ timestamp: -1 })
-      .limit(parseInt(limit));
+    const messagesSnapshot = await TerminalMessages.where('widgetId', '==', widgetId)
+        .where('userId', '==', userId)
+        .orderBy('timestamp', 'desc')
+        .limit(parseInt(limit)).get();
+    
+    const messages = messagesSnapshot.docs.map(doc => ({
+      id: doc.id,
+      ...doc.data(),
+      timestamp: doc.data().timestamp?.toDate?.() || doc.data().timestamp
+    }));
 
     // جلب آخر رسائل من Adafruit IO أيضاً
     if (req.user.adafruitUsername && req.user.adafruitApiKey) {
@@ -1476,16 +1848,23 @@ app.get('/api/terminals/:widgetId/messages', auth, async (req, res) => {
 // ===== نظام Polling تلقائي من Adafruit IO =====
 
 // دالة لجلب التحديثات تلقائياً
+// دالة لجلب التحديثات تلقائياً
 async function pollAdafruitIO() {
   try {
-    const users = await User.find({ 
-      adafruitUsername: { $ne: '' }, 
-      adafruitApiKey: { $ne: '' } 
-    });
+    // Firestore بيسمح بشرط واحد بس فيه (!=)
+    const usersSnapshot = await Users.where('adafruitUsername', '!=', '').get();
+    
+    // هنفلتر الشرط التاني بالكود هنا
+    const users = usersSnapshot.docs
+        .map(doc => ({ id: doc.id, ...doc.data() }))
+        .filter(user => user.adafruitApiKey && user.adafruitApiKey.trim() !== '');
 
     for (const user of users) {
-      const widgets = await Widget.find({ userId: user._id, type: { $in: ['sensor', 'terminal'] } });
+      const widgetsSnapshot = await Widgets.where('userId', '==', user.id)
+          .where('type', 'in', ['sensor', 'terminal']).get();
       
+      const widgets = widgetsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
       for (const widget of widgets) {
         try {
           const url = `https://io.adafruit.com/api/v2/${user.adafruitUsername}/feeds/${widget.feedName}/data/last`;
@@ -1499,20 +1878,23 @@ async function pollAdafruitIO() {
             const newTimestamp = new Date(data.created_at);
 
             // تحقق من وجود تحديث جديد
-            if (widget.state.lastValue !== newValue || 
-                !widget.state.lastUpdate || 
-                newTimestamp > widget.state.lastUpdate) {
+            const lastUpdate = widget.state?.lastUpdate?.toDate?.() || widget.state?.lastUpdate;
+            
+            if (widget.state?.lastValue !== newValue || 
+                !lastUpdate || 
+                newTimestamp > lastUpdate) {
               
               // تحديث الويدجت
-              widget.state.lastValue = newValue;
-              widget.state.lastUpdate = newTimestamp;
-              widget.state.isActive = true;
-              await widget.save();
+              await Widgets.doc(widget.id).update({
+                'state.lastValue': newValue,
+                'state.lastUpdate': admin.firestore.Timestamp.fromDate(newTimestamp),
+                'state.isActive': true
+              });
 
               // إرسال التحديث عبر Socket.IO
               if (widget.type === 'sensor') {
-                io.to(`user-${user._id}`).emit('sensor-data', {
-                  widgetId: widget._id,
+                io.to(`user-${user.id}`).emit('sensor-data', {
+                  widgetId: widget.id,
                   value: newValue,
                   timestamp: data.created_at,
                   isActive: true,
@@ -1520,17 +1902,18 @@ async function pollAdafruitIO() {
                 });
               } else if (widget.type === 'terminal') {
                 // حفظ كرسالة ترمينال جديدة
-                const terminalMessage = new TerminalMessage({
-                  userId: user._id,
-                  widgetId: widget._id,
+                const terminalMessageRef = TerminalMessages.doc();
+                await terminalMessageRef.set({
+                  userId: user.id,
+                  widgetId: widget.id,
                   message: newValue,
                   type: 'received',
-                  timestamp: newTimestamp
+                  timestamp: admin.firestore.Timestamp.fromDate(newTimestamp),
+                  createdAt: admin.firestore.Timestamp.now()
                 });
-                await terminalMessage.save();
 
-                io.to(`user-${user._id}`).emit('terminal-message', {
-                  widgetId: widget._id,
+                io.to(`user-${user.id}`).emit('terminal-message', {
+                  widgetId: widget.id,
                   message: newValue,
                   type: 'received',
                   timestamp: newTimestamp
@@ -1539,7 +1922,7 @@ async function pollAdafruitIO() {
             }
           }
         } catch (widgetErr) {
-          console.error(`خطأ في تحديث الويدجت ${widget._id}:`, widgetErr);
+          console.error(`خطأ في تحديث الويدجت ${widget.id}:`, widgetErr);
         }
       }
     }
@@ -1592,30 +1975,35 @@ app.put('/api/widgets/:widgetId/position', auth, async (req, res) => {
             return res.status(400).json({ msg: 'بيانات الموضع مطلوبة (x, y)' });
         }
 
-        const widget = await Widget.findOne({ 
-            _id: widgetId, 
-            userId: req.user._id 
-        });
-
-        if (!widget) {
+        // التحقق من أن الأداة موجودة وتنتمي للمستخدم
+        const widgetDoc = await Widgets.doc(widgetId).get();
+        if (!widgetDoc.exists) {
             return res.status(404).json({ msg: 'الأداة غير موجودة' });
         }
 
+        const widget = widgetDoc.data();
+        if (widget.userId !== req.user.id) {
+            return res.status(403).json({ msg: 'ليس لديك صلاحية لتعديل هذه الأداة' });
+        }
+
         // تحديث موضع الأداة
-        widget.gs = {
+        const gsData = {
             x: parseInt(gs.x) || 0,
             y: parseInt(gs.y) || 0,
             w: parseInt(gs.w) || 1,
             h: parseInt(gs.h) || 1
         };
 
-        await widget.save();
+        await Widgets.doc(widgetId).update({
+            gs: gsData,
+            updatedAt: admin.firestore.Timestamp.now()
+        });
 
-        console.log(`✅ تم حفظ موضع الأداة ${widget.name}: (${widget.gs.x}, ${widget.gs.y})`);
+        console.log(`✅ تم حفظ موضع الأداة ${widget.name}: (${gsData.x}, ${gsData.y})`);
 
         res.json({ 
             msg: 'تم حفظ موضع الأداة بنجاح',
-            gs: widget.gs
+            gs: gsData
         });
 
     } catch (error) {
@@ -1627,8 +2015,11 @@ app.put('/api/widgets/:widgetId/position', auth, async (req, res) => {
 // تصدير بيانات المستخدم (JSON Backup)
 app.get('/api/user/export', auth, async (req, res) => {
   try {
-    const user = await User.findById(req.user._id).select('-password');
-    const widgets = await Widget.find({ userId: req.user._id });
+    const userDoc = await Users.doc(req.user.id).get();
+    const user = userDoc.data();
+    
+    const widgetsSnapshot = await Widgets.where('userId', '==', req.user.id).get();
+    const widgets = widgetsSnapshot.docs.map(doc => doc.data());
 
     const exportData = {
       user: {
@@ -1636,8 +2027,8 @@ app.get('/api/user/export', auth, async (req, res) => {
         email: user.email,
         adafruitUsername: user.adafruitUsername,
         preferences: user.preferences,
-        createdAt: user.createdAt,
-        lastLogin: user.security?.lastLogin // تضمين آخر تسجيل دخول
+        createdAt: user.createdAt?.toDate?.() || user.createdAt,
+        lastLogin: user.security?.lastLogin?.toDate?.() || user.security?.lastLogin
       },
       widgets: widgets.map(widget => ({
         // استبعاد البيانات الحساسة أو غير الضرورية للاستيراد
@@ -1672,48 +2063,68 @@ app.post('/api/user/import', auth, async (req, res) => {
       return res.status(400).json({ msg: 'بيانات الأدوات المستوردة غير صالحة. يرجى التأكد من اختيار ملف JSON صحيح.' });
     }
 
-    // اختيار استراتيجية الاستيراد:
-    // 1. حذف جميع الأدوات الحالية للمستخدم وإضافة الأدوات المستوردة (للتجنب التكرار والتعارض)
-    await Widget.deleteMany({ userId: req.user._id });
+    // حذف جميع الأدوات الحالية للمستخدم تجنباً للتكرار والتعارض
+    const currentWidgetsSnapshot = await Widgets.where('userId', '==', req.user.id).get();
+    const batch = db.batch();
+    
+    currentWidgetsSnapshot.docs.forEach(doc => {
+      batch.delete(doc.ref);
+    });
+    
+    await batch.commit();
 
-    // 2. إضافة الأدوات الجديدة من البيانات المستوردة
-    const newWidgets = importedWidgets.map(widgetData => ({
-      userId: req.user._id,
-      name: widgetData.name || 'أداة مستوردة',
-      feedName: widgetData.feedName || 'default-feed',
-      type: widgetData.type || 'toggle',
-      icon: widgetData.icon || 'fas fa-toggle-on',
-      configuration: {
-        onCommand: widgetData.configuration?.onCommand || 'ON',
-        offCommand: widgetData.configuration?.offCommand || 'OFF',
-        unit: widgetData.configuration?.unit || ''
-      },
-      appearance: {
-        primaryColor: widgetData.appearance?.primaryColor || '#8A2BE2',
-        activeColor: widgetData.appearance?.activeColor || '#00e5ff',
-        glowColor: widgetData.appearance?.glowColor || '#8A2BE2'
-      },
-      state: {
-        isActive: false, // تعيين الحالة الافتراضية
-        lastValue: null,
-        lastUpdate: new Date()
-      },
-      analytics: {
-        totalCommands: 0,
-        successfulCommands: 0
-      },
-      createdAt: new Date(),
-      updatedAt: new Date()
-    }));
+    // إضافة الأدوات الجديدة من البيانات المستوردة
+    const newBatch = db.batch();
+    
+    importedWidgets.forEach(widgetData => {
+      const newWidgetRef = Widgets.doc();
+      const widgetContent = {
+        userId: req.user.id,
+        name: widgetData.name || 'أداة مستوردة',
+        feedName: widgetData.feedName || 'default-feed',
+        type: widgetData.type || 'toggle',
+        icon: widgetData.icon || 'fas fa-toggle-on',
+        configuration: {
+          onCommand: widgetData.configuration?.onCommand || 'ON',
+          offCommand: widgetData.configuration?.offCommand || 'OFF',
+          unit: widgetData.configuration?.unit || '',
+          ...widgetData.configuration
+        },
+        appearance: {
+          primaryColor: widgetData.appearance?.primaryColor || '#8A2BE2',
+          activeColor: widgetData.appearance?.activeColor || '#00e5ff',
+          glowColor: widgetData.appearance?.glowColor || '#8A2BE2'
+        },
+        gs: {
+          x: 0,
+          y: 0,
+          w: 1,
+          h: 1
+        },
+        state: {
+          isActive: false,
+          lastValue: null,
+          lastUpdate: admin.firestore.Timestamp.now()
+        },
+        analytics: {
+          totalCommands: 0,
+          successfulCommands: 0
+        },
+        createdAt: admin.firestore.Timestamp.now(),
+        updatedAt: admin.firestore.Timestamp.now()
+      };
+      
+      newBatch.set(newWidgetRef, widgetContent);
+    });
 
-    if (newWidgets.length > 0) {
-      await Widget.insertMany(newWidgets);
+    if (importedWidgets.length > 0) {
+      await newBatch.commit();
     }
 
     // إرسال تحديث Socket.IO إلى الواجهة الأمامية لإعادة تحميل الأدوات
-    io.to(`user-${req.user._id}`).emit('widgets-reloaded');
+    io.to(`user-${req.user.id}`).emit('widgets-reloaded');
 
-    res.json({ msg: `تم استيراد ${newWidgets.length} أداة بنجاح.` });
+    res.json({ msg: `تم استيراد ${importedWidgets.length} أداة بنجاح.` });
   } catch (err) {
     console.error('❌ خطأ في استيراد البيانات:', err);
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء استيراد البيانات. يرجى التأكد من أن الملف بصيغة JSON صحيحة.' });
@@ -1721,46 +2132,48 @@ app.post('/api/user/import', auth, async (req, res) => {
 });
 
 
-// تمكين المصادقة الثنائية (Enable 2FA)
-app.post('/api/auth/enable-2fa', auth, async (req, res) => {
-  try {
-    const user = await User.findById(req.user._id);
-    if (!user) {
-      return res.status(404).json({ msg: 'المستخدم غير موجود.' });
-    }
-
-    if (user.security.twoFactorEnabled) {
-      return res.status(400).json({ msg: 'المصادقة الثنائية ممكّنة بالفعل.' });
-    }
-
-    // توليد مفتاح سري جديد (استخدام عشوائي بسيط هنا، استخدم مكتبة TOTP في الإنتاج)
-    const secret = crypto.randomBytes(20).toString('hex'); // مفتاح سري عشوائي
-
-    user.security.twoFactorEnabled = true;
-    user.security.twoFactorSecret = secret;
-    await user.save();
-
-    res.json({
-      msg: 'تم تفعيل المصادقة الثنائية بنجاح.',
-      secret: secret // يجب عرض هذا الرمز للمستخدم ليتمكن من إعداده في تطبيق المصادقة الخاص به
-    });
-  } catch (err) {
-    console.error('❌ خطأ في تفعيل المصادقة الثنائية:', err);
-    res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء تفعيل المصادقة الثنائية.' });
-  }
-});
+// (Removed redundant 2FA route replaced by combined one below)
 
 // حذف الحساب (Delete Account)
 app.delete('/api/user/delete-account', auth, async (req, res) => {
   try {
-    const userId = req.user._id;
+    const userId = req.user.id;
 
     // حذف جميع البيانات المرتبطة بالمستخدم بشكل آمن ومنظم
-    await Promise.all([
-      Widget.deleteMany({ userId }), // حذف جميع الأدوات الخاصة بالمستخدم
-      Session.deleteMany({ userId }), // حذف جميع جلسات المستخدم
-      User.findByIdAndDelete(userId) // حذف حساب المستخدم نفسه
-    ]);
+    // 1. حذف جميع الأدوات الخاصة بالمستخدم
+    const widgetsSnapshot = await Widgets.where('userId', '==', userId).get();
+    const widgetsBatch = db.batch();
+    widgetsSnapshot.docs.forEach(doc => {
+      widgetsBatch.delete(doc.ref);
+    });
+    await widgetsBatch.commit();
+
+    // 2. حذف جميع رسائل المحطات الطرفية
+    const messagesSnapshot = await TerminalMessages.where('userId', '==', userId).get();
+    const messagesBatch = db.batch();
+    messagesSnapshot.docs.forEach(doc => {
+      messagesBatch.delete(doc.ref);
+    });
+    await messagesBatch.commit();
+
+    // 3. حذف جميع جلسات المستخدم
+    const sessionsSnapshot = await Sessions.where('userId', '==', userId).get();
+    const sessionsBatch = db.batch();
+    sessionsSnapshot.docs.forEach(doc => {
+      sessionsBatch.delete(doc.ref);
+    });
+    await sessionsBatch.commit();
+
+    // 4. حذف جميع رموز إعادة تعيين كلمة المرور
+    const resetCodesSnapshot = await ResetCodes.where('userId', '==', userId).get();
+    const resetCodesBatch = db.batch();
+    resetCodesSnapshot.docs.forEach(doc => {
+      resetCodesBatch.delete(doc.ref);
+    });
+    await resetCodesBatch.commit();
+
+    // 5. حذف حساب المستخدم نفسه
+    await Users.doc(userId).delete();
 
     res.json({ msg: 'تم حذف الحساب وجميع البيانات المرتبطة به بنجاح. نأمل أن نراك مرة أخرى!' });
   } catch (err) {
@@ -1768,84 +2181,73 @@ app.delete('/api/user/delete-account', auth, async (req, res) => {
     res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء حذف الحساب. يرجى المحاولة مرة أخرى.' });
   }
 });
-// دالة لجلب التحديثات تلقائياً
-async function pollAdafruitIO() {
-  try {
-    const users = await User.find({ 
-      adafruitUsername: { $ne: '' }, 
-      adafruitApiKey: { $ne: '' } 
-    });
 
-    for (const user of users) {
-      const widgets = await Widget.find({ userId: user._id, type: { $in: ['sensor', 'terminal'] } });
-      
-      for (const widget of widgets) {
-        try {
-          const url = `https://io.adafruit.com/api/v2/${user.adafruitUsername}/feeds/${widget.feedName}/data/last`;
-          const response = await fetch(url, {
-            headers: { 'X-AIO-Key': user.adafruitApiKey }
-          });
-
-          if (response.ok) {
-            const data = await response.json();
-            const newValue = data.value;
-            const newTimestamp = new Date(data.created_at);
-
-            if (widget.state.lastValue !== newValue || 
-                !widget.state.lastUpdate || 
-                newTimestamp > widget.state.lastUpdate) {
-              
-              widget.state.lastValue = newValue;
-              widget.state.lastUpdate = newTimestamp;
-              widget.state.isActive = true;
-              await widget.save();
-
-              if (widget.type === 'sensor') {
-                io.to(`user-${user._id}`).emit('sensor-data', {
-                  widgetId: widget._id,
-                  value: newValue,
-                  timestamp: data.created_at,
-                  isActive: true,
-                  lastUpdate: newTimestamp
-                });
-              }
-            }
-          }
-        } catch (widgetErr) {
-          console.error(`خطأ في تحديث الويدجت ${widget._id}:`, widgetErr);
-        }
-      }
+// حذف جميع الأدوات والبيانات (Clear All Data)
+app.post('/api/user/clear-data', auth, async (req, res) => {
+    try {
+      const userId = req.user.id;
+  
+      // 1. حذف جميع الأدوات الخاصة بالمستخدم
+      const widgetsSnapshot = await Widgets.where('userId', '==', userId).get();
+      const widgetsBatch = db.batch();
+      widgetsSnapshot.docs.forEach(doc => {
+        widgetsBatch.delete(doc.ref);
+      });
+      await widgetsBatch.commit();
+  
+      // 2. حذف جميع رسائل المحطات الطرفية
+      const messagesSnapshot = await TerminalMessages.where('userId', '==', userId).get();
+      const messagesBatch = db.batch();
+      messagesSnapshot.docs.forEach(doc => {
+        messagesBatch.delete(doc.ref);
+      });
+      await messagesBatch.commit();
+  
+      // إرسال تحديث Socket.IO لإفراغ الواجهة الأمامية
+      io.to(`user-${userId}`).emit('widgets-reloaded');
+  
+      res.json({ msg: 'تم حذف جميع الأدوات والبيانات بنجاح.' });
+    } catch (err) {
+      console.error('❌ خطأ في مسح البيانات:', err);
+      res.status(500).json({ msg: 'حدث خطأ في الخادم أثناء مسح البيانات.' });
     }
-  } catch (err) {
-    console.error('❌ خطأ في polling Adafruit IO:', err);
-  }
-}
-
-// تشغيل polling كل 5 ثوانٍ
-setInterval(pollAdafruitIO, 5000);
+  });
 
 // ==========================================================
 // START: NEW 2FA AND SESSION ENDPOINTS
 // ==========================================================
 
-// تفعيل المصادقة الثنائية
+// تفعيل المصادقة الثنائية (البريد الإلكتروني فقط)
 app.post('/api/user/enable-2fa', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
-        user.security.twoFactorEnabled = true;
-        await user.save();
-        res.json({ msg: 'تم تفعيل المصادقة الثنائية بنجاح.' });
+        const userDoc = await Users.doc(req.user.id).get();
+        if (!userDoc.exists) return res.status(404).json({ msg: 'المستخدم غير موجود.' });
+        
+        await Users.doc(req.user.id).update({
+            'security.twoFactorEnabled': true
+        });
+        
+        res.json({ 
+            msg: 'تم تفعيل المصادقة الثنائية بنجاح. سيتم إرسال رمز التحقق إلى بريدك عند الدخول.'
+        });
     } catch (err) {
-        res.status(500).json({ msg: 'خطأ في الخادم.' });
+        console.error('2FA Enable Error:', err);
+        res.status(500).json({ msg: 'خطأ في تفعيل المصادقة الثنائية.' });
     }
 });
 
 // تعطيل المصادقة الثنائية
 app.post('/api/user/disable-2fa', auth, async (req, res) => {
     try {
-        const user = await User.findById(req.user.id);
-        user.security.twoFactorEnabled = false;
-        await user.save();
+        const userDoc = await Users.doc(req.user.id).get();
+        if (!userDoc.exists) {
+            return res.status(404).json({ msg: 'المستخدم غير موجود.' });
+        }
+        
+        await Users.doc(req.user.id).update({
+            'security.twoFactorEnabled': false
+        });
+        
         res.json({ msg: 'تم إلغاء تفعيل المصادقة الثنائية.' });
     } catch (err) {
         res.status(500).json({ msg: 'خطأ في الخادم.' });
@@ -1855,6 +2257,308 @@ app.post('/api/user/disable-2fa', auth, async (req, res) => {
 // ==========================================================
 // END: NEW 2FA AND SESSION ENDPOINTS
 // ==========================================================
+
+app.post('/api/logs/client', async (req, res) => {
+    try {
+        const { error, stackTrace, deviceInfo, appVersion } = req.body;
+        let userId = 'anonymous';
+        const token = req.header('x-auth-token') || req.header('Authorization')?.replace('Bearer ', '');
+        if (token) {
+            try {
+                const decoded = AuthService.verifyJWT(token);
+                userId = decoded.id;
+            } catch (e) {}
+        }
+        
+        await ClientLogs.add({
+            userId,
+            error: error || 'Unknown Error',
+            stackTrace: stackTrace || '',
+            deviceInfo: deviceInfo || {},
+            appVersion: appVersion || 'Unknown',
+            timestamp: admin.firestore.Timestamp.now()
+        });
+        
+        res.status(201).json({ msg: 'Log recorded successfully' });
+    } catch (err) {
+        console.error('Failed to log client error:', err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+// Fetch notifications for a user
+app.get('/api/notifications', auth, async (req, res) => {
+    try {
+        const userId = req.user.id;
+        const allSnapshot = await Notifications.where('targetUserId', '==', 'all').orderBy('timestamp', 'desc').limit(20).get();
+        const userSnapshot = await Notifications.where('targetUserId', '==', userId).orderBy('timestamp', 'desc').limit(20).get();
+        
+        const allNotifs = allSnapshot.docs.map(d => ({id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate?.()}));
+        const userNotifs = userSnapshot.docs.map(d => ({id: d.id, ...d.data(), timestamp: d.data().timestamp?.toDate?.()}));
+        
+        let merged = [...allNotifs, ...userNotifs];
+        merged.sort((a,b) => b.timestamp - a.timestamp);
+        const unique = Array.from(new Map(merged.map(item => [item.id, item])).values());
+        
+        res.json(unique.slice(0, 30));
+    } catch(err) {
+        console.error('Error fetching notifications:', err);
+        res.status(500).json({ msg: 'Server error fetching notifications' });
+    }
+});
+
+// ==========================================================
+// START: ADMIN DASHBOARD ROUTES
+// ==========================================================
+const adminAuth = async (req, res, next) => {
+    try {
+        await auth(req, res, async () => {
+            if (req.user.role === 'admin' || req.user.email?.toLowerCase() === 'hussianabdk577@gmail.com' || req.user.googleEmail?.toLowerCase() === 'hussianabdk577@gmail.com') {
+                next();
+            } else {
+                res.status(403).json({ msg: 'Access denied. Admins only.' });
+            }
+        });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error check admin' });
+    }
+};
+
+const requirePermission = (permission) => async (req, res, next) => {
+    try {
+        await auth(req, res, async () => {
+            const isSuperAdmin = (req.user.email?.toLowerCase() === 'hussianabdk577@gmail.com' || req.user.googleEmail?.toLowerCase() === 'hussianabdk577@gmail.com');
+            if (isSuperAdmin) {
+                return next();
+            }
+            if (req.user.role === 'admin') {
+                const perms = req.user.adminPermissions || [];
+                if (perms.includes(permission) || perms.includes('*')) {
+                    return next();
+                }
+            }
+            res.status(403).json({ msg: 'ليس لديك الصلاحية لفعل هذا: ' + permission });
+        });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error check permission' });
+    }
+};
+
+app.get('/api/admin/users', requirePermission('manage_users'), async (req, res) => {
+    try {
+        const usersSnapshot = await Users.get();
+        const users = [];
+        for (const doc of usersSnapshot.docs) {
+             const u = doc.data();
+             // Get total widgets count for this user
+             const widgetsSnapshot = await Widgets.where('userId', '==', doc.id).get();
+             const widgetCount = widgetsSnapshot.size;
+             users.push({
+                 id: doc.id,
+                 username: u.username,
+                 email: u.email,
+                 role: u.role || 'user',
+                 status: u.status || 'active',
+                 adminMessage: u.adminMessage || { show: true, text: 'حسابك معلق حالياً. يرجى التواصل مع المسؤول.', email: 'hussianabdk577@gmail.com', whatsapp: '' },
+                 widgetCount,
+                 lastLogin: u.security?.lastLogin?.toDate?.() || u.createdAt?.toDate?.()
+             });
+        }
+        res.json(users);
+    } catch (error) {
+        res.status(500).json({ msg: 'Error getting users' });
+    }
+});
+
+app.put('/api/admin/users/:id/status', requirePermission('manage_users'), async (req, res) => {
+    try {
+        const { status, adminMessage } = req.body;
+        const targetUserDoc = await Users.doc(req.params.id).get();
+        if(!targetUserDoc.exists) return res.status(404).json({ msg: 'User not found' });
+        
+        const targetEmail = targetUserDoc.data().email?.toLowerCase();
+        if(targetEmail === 'hussianabdk577@gmail.com' && req.user.email?.toLowerCase() !== 'hussianabdk577@gmail.com') {
+             return res.status(403).json({ msg: 'لا يمكنك تغيير حالة المشرف الرئيسي!' });
+        }
+
+        await Users.doc(req.params.id).update({
+            status,
+            adminMessage
+        });
+        res.json({ msg: 'تم تحديث حالة الحساب.' });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+app.put('/api/admin/users/:id/role', requirePermission('manage_roles'), async (req, res) => {
+    try {
+        const { role, adminPermissions } = req.body;
+        const targetUserDoc = await Users.doc(req.params.id).get();
+        if(!targetUserDoc.exists) return res.status(404).json({ msg: 'User not found' });
+
+        const targetEmail = targetUserDoc.data().email?.toLowerCase();
+        if(targetEmail === 'hussianabdk577@gmail.com') {
+             return res.status(403).json({ msg: 'لا يمكنك تغيير رتبة أو صلاحيات المشرف الرئيسي!' });
+        }
+
+        await Users.doc(req.params.id).update({ 
+            role,
+            adminPermissions: role === 'admin' ? (adminPermissions || []) : []
+        });
+        res.json({ msg: 'تم تحديث الدور والصلاحيات بنجاح.' });
+    } catch (err) {
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+app.get('/admin', (req, res) => res.sendFile(path.join(__dirname, 'admin.html')));
+
+// Add a simple in-memory log buffer for the admin interface
+const systemLogs = [];
+const originalConsoleError = console.error;
+console.error = function() {
+    const message = Array.from(arguments).join(' ');
+    systemLogs.unshift({ timestamp: new Date(), type: 'ERROR', message });
+    if (systemLogs.length > 500) systemLogs.pop();
+    originalConsoleError.apply(console, arguments);
+};
+
+app.get('/api/admin/logs', requirePermission('view_logs'), (req, res) => {
+     res.json(systemLogs);
+});
+
+app.get('/api/admin/client-logs', requirePermission('view_logs'), async (req, res) => {
+    try {
+        const logsSnapshot = await ClientLogs.orderBy('timestamp', 'desc').limit(100).get();
+        const logs = logsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: doc.data().timestamp?.toDate?.()
+        }));
+        res.json(logs);
+    } catch (err) {
+        console.error('Error fetching client logs:', err);
+        res.status(500).json({ msg: 'Server error fetching client logs' });
+    }
+});
+
+app.post('/api/admin/notifications', requirePermission('send_notifications'), async (req, res) => {
+    try {
+        const { title, message, targetUserId } = req.body;
+        if (!title || !message) {
+            return res.status(400).json({ msg: 'Title and message are required' });
+        }
+        
+        const notifRef = Notifications.doc();
+        const notification = {
+            id: notifRef.id,
+            title,
+            message,
+            targetUserId: targetUserId || 'all',
+            senderId: req.user.id,
+            timestamp: admin.firestore.Timestamp.now()
+        };
+        
+        await notifRef.set(notification);
+        
+        if (notification.targetUserId === 'all') {
+            io.emit('new-notification', notification);
+        } else {
+            io.to(`user-${notification.targetUserId}`).emit('new-notification', notification);
+        }
+        
+        res.status(201).json({ msg: 'Notification sent successfully', notification });
+    } catch(err) {
+        console.error('Error sending notification:', err);
+        res.status(500).json({ msg: 'Server error' });
+    }
+});
+
+app.get('/api/admin/sessions/:userId', requirePermission('manage_users'), async (req, res) => {
+    try {
+        const userId = req.params.userId;
+        const sessionsSnapshot = await Sessions.where('userId', '==', userId).get();
+        const sessions = sessionsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            lastActivity: doc.data().lastActivity?.toDate?.(),
+            createdAt: doc.data().createdAt?.toDate?.()
+        }));
+        // Sort in memory to avoid Firestore requiring a composite index
+        sessions.sort((a, b) => (b.lastActivity || b.createdAt) - (a.lastActivity || a.createdAt));
+        res.json(sessions);
+    } catch (err) {
+        console.error('Error fetching user sessions:', err);
+        res.status(500).json({ msg: 'Server error fetching sessions' });
+    }
+});
+
+app.get('/api/admin/adafruit-quota', requirePermission('view_logs'), async (req, res) => {
+    try {
+        const quotas = [];
+        for (const [userId, data] of userAdafruitQuotas.entries()) {
+            const userDoc = await Users.doc(userId).get();
+            const username = userDoc.exists ? userDoc.data().username : 'Unknown';
+            quotas.push({
+                userId,
+                username,
+                remaining: data.remaining,
+                lastUpdated: data.lastUpdated
+            });
+        }
+        res.json(quotas);
+    } catch(err) {
+        res.status(500).json({ msg: 'Server error fetching quotas' });
+    }
+});
+
+app.post('/api/admin/ban-device', requirePermission('manage_users'), async (req, res) => {
+    try {
+        const { ip, deviceId, reason } = req.body;
+        if (!ip && !deviceId) {
+            return res.status(400).json({ msg: 'يجب توفير IP أو Device ID.' });
+        }
+        
+        const banRef = BannedDevices.doc();
+        await banRef.set({
+            ip: ip || null,
+            deviceId: deviceId || null,
+            reason: reason || 'محظور من قبل الإدارة',
+            bannedAt: admin.firestore.Timestamp.now(),
+            bannedBy: req.user.id
+        });
+        
+        res.json({ msg: 'تم إضافة الحظر بنجاح.' });
+    } catch (err) {
+        console.error('Error banning device:', err);
+        res.status(500).json({ msg: 'Server error banning device' });
+    }
+});
+
+app.delete('/api/admin/logout-device/:sessionId', requirePermission('manage_users'), async (req, res) => {
+    try {
+        const sessionId = req.params.sessionId;
+        const sessionDoc = await Sessions.doc(sessionId).get();
+        if(!sessionDoc.exists) {
+            return res.status(404).json({ msg: 'الجلسة غير موجودة' });
+        }
+        
+        await Sessions.doc(sessionId).update({
+            isActive: false,
+            expiresAt: admin.firestore.Timestamp.now()
+        });
+        
+        res.json({ msg: 'تم إنهاء الجلسة بنجاح.' });
+    } catch (err) {
+        console.error('Error terminating session:', err);
+        res.status(500).json({ msg: 'Server error terminating session' });
+    }
+});
+// ==========================================================
+// END: ADMIN DASHBOARD ROUTES
+// ==========================================================
+
 const PORT = process.env.PORT || 3000;
 server.listen(PORT, "0.0.0.0", () => {
   console.log(`🚀 الخادم يعمل على المنفذ ${PORT} - http://0.0.0.0:${PORT}`);

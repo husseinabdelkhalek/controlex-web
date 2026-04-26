@@ -1,23 +1,25 @@
 // public/js/icon-picker.js - نسخة مُحدّثة مع إصلاح مشاكل العرض
-class IconPicker {
-    constructor(inputElement, widgetType = 'toggle') {
-        this.input = inputElement;
-        this.widgetType = widgetType;
-        this.isOpen = false;
-        this.selectedIcon = inputElement.value || this.getDefaultIcon(widgetType);
-        
-        // مجموعة أيقونات مُحدّثة ومُصنّفة
-        this.icons = {
-            toggle: [
-                'fas fa-toggle-on', 'fas fa-toggle-off', 'fas fa-power-off',
-                'fas fa-lightbulb', 'fas fa-plug', 'fas fa-wifi',
-                'fas fa-bluetooth', 'fas fa-battery-full', 'fas fa-tv',
-                'fas fa-desktop', 'fas fa-mobile-alt', 'fas fa-laptop',
-                'fas fa-fan', 'fas fa-thermometer-half', 'fas fa-snowflake',
-                'fas fa-fire', 'fas fa-lock', 'fas fa-unlock',
-                'fas fa-door-open', 'fas fa-door-closed', 'fas fa-eye',
-                'fas fa-eye-slash', 'fas fa-volume-up', 'fas fa-volume-mute',
-                'fas fa-home', 'fas fa-car', 'fas fa-bell',
+// حماية التعريف من التكرار
+if (typeof window.IconPicker === 'undefined') {
+    window.IconPicker = class IconPicker {
+        constructor(inputElement, widgetType = 'toggle') {
+            this.input = inputElement;
+            this.widgetType = widgetType;
+            this.isOpen = false;
+            this.selectedIcon = inputElement.value || this.getDefaultIcon(widgetType);
+            
+            // مجموعة أيقونات مُحدّثة ومُصنّفة
+            this.icons = {
+                toggle: [
+                    'fas fa-toggle-on', 'fas fa-toggle-off', 'fas fa-power-off',
+                    'fas fa-lightbulb', 'fas fa-plug', 'fas fa-wifi',
+                    'fas fa-bluetooth', 'fas fa-battery-full', 'fas fa-tv',
+                    'fas fa-desktop', 'fas fa-mobile-alt', 'fas fa-laptop',
+                    'fas fa-fan', 'fas fa-thermometer-half', 'fas fa-snowflake',
+                    'fas fa-fire', 'fas fa-lock', 'fas fa-unlock',
+                    'fas fa-door-open', 'fas fa-door-closed', 'fas fa-eye',
+                    'fas fa-eye-slash', 'fas fa-volume-up', 'fas fa-volume-mute',
+                    'fas fa-home', 'fas fa-car', 'fas fa-bell',
                 'fas fa-bell-slash', 'fas fa-moon', 'fas fa-sun'
             ],
             
@@ -667,6 +669,7 @@ class IconPicker {
         
         console.log('🗑️ تم تدمير منتقي الأيقونات');
     }
+    };
 }
 
 // وظيفة التهيئة العامة
@@ -676,7 +679,7 @@ function initIconPicker(inputElement, widgetType = 'toggle') {
         return null;
     }
     
-    return new IconPicker(inputElement, widgetType);
+    return new window.IconPicker(inputElement, widgetType);
 }
 
 // تصدير للاستخدام العام

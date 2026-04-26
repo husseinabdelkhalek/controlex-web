@@ -256,6 +256,46 @@
         authElements.forEach(el => {
             el.style.display = '';
         });
+
+        // إضافة زر لوحة الإدارة إذا كان المستخدم أدمن
+        if (user.role === 'admin') {
+            // للقائمة العلوية
+            const navMenu = document.getElementById('nav-menu');
+            if (navMenu && !document.getElementById('admin-nav-item')) {
+                const adminLi = document.createElement('li');
+                adminLi.className = 'nav-item';
+                adminLi.id = 'admin-nav-item';
+                adminLi.innerHTML = `
+                    <a href="/admin" class="nav-link" style="color: #ff4757;">
+                        <i class="fas fa-shield-alt" aria-hidden="true"></i>
+                        <span>لوحة الإدارة</span>
+                    </a>
+                `;
+                // إدخال قبل زر الخروج
+                const logoutLi = navMenu.querySelector('li:last-child');
+                if (logoutLi) {
+                    navMenu.insertBefore(adminLi, logoutLi);
+                } else {
+                    navMenu.appendChild(adminLi);
+                }
+            }
+            
+            // للقائمة الجانبية في الموبايل
+            const mobileMenuPanel = document.getElementById('mobile-menu-panel');
+            if (mobileMenuPanel && !document.getElementById('mobile-admin-link')) {
+                const adminMobileLink = document.createElement('a');
+                adminMobileLink.href = '/admin';
+                adminMobileLink.id = 'mobile-admin-link';
+                adminMobileLink.className = 'mobile-menu-link';
+                adminMobileLink.style.color = '#ff4757';
+                adminMobileLink.innerHTML = '<i class="fas fa-shield-alt"></i> لوحة الإدارة';
+                
+                const settingsLink = mobileMenuPanel.querySelector('a[href="/settings"]');
+                if (settingsLink && settingsLink.parentNode) {
+                    settingsLink.parentNode.insertBefore(adminMobileLink, settingsLink.nextSibling);
+                }
+            }
+        }
     }
     
     function updateLastActivity() {
